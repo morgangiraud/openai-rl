@@ -16,4 +16,7 @@ class BasicAgent(object):
     def learnFromEpisode(self, env, episode_id):
         pass
 
+    def save(self):
+        self.saver.save(self.sess, self.result_folder)
+
 

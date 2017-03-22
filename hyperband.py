@@ -100,11 +100,11 @@ class Hyperband:
 
                     self.results.append( result )
             
-            # select a number of best configurations for the next loop
-            # filter out early stops, if any
-            indices = np.argsort( val_losses )
-            T = [ T[i] for i in indices if not early_stops[i]]
-            T = T[ 0:int( n_configs / self.eta )]
+                # select a number of best configurations for the next loop
+                # filter out early stops, if any
+                indices = np.argsort( val_losses )
+                T = [ T[i] for i in indices if not early_stops[i]]
+                T = T[ 0:int( n_configs / self.eta )]
     
         return self.results
   

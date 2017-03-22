@@ -1,22 +1,62 @@
-import os, time
-
-dir = os.path.dirname(os.path.realpath(__file__)) + '/..'
+import json, os
+import tensorflow as tf
+from gym.spaces import Discrete, Box
 
 class BasicAgent(object):
-    def __init__(self, observation_space, action_space, config):
-        pass
+    def __init__(self, config, env):
+        self.config = config
 
-    def initModel(self):
-        self.result_folder = dir + '/results/' + str(int(time.time()))
-        pass
+        self.result_dir = config['result_dir']
+        self.max_iter = config['max_iter']
+
+        self.env = env
+        if 'nb_state' in config:
+            self.nb_state = config['nb_state']
+            self.phi = config['phi']
+        else:
+            if not isinstance(env.observation_space, Box):
+                raise Exception('Observation space {} incompatible with {}. (Only supports Box observation spaces.)'.format(action_space, self))
+            self.observation_space = env.observation_space      
+        if not isinstance(env.action_space, Discrete):
+            raise Exception('Action space {} incompatible with {}. (Only supports Discrete action spaces.)'.format(action_space, self))
+        self.action_space = env.action_space
+
+        self.lr = config['lr']
 
     def act(self, obs, eps=None):
         pass
 
-    def learnFromEpisode(self, env, episode_id):
+    def learnFromEpisode(self, env):
         pass
 
+    def train(self, render=False):
+        for episode_id in range(0, self.max_iter):
+            self.learnFromEpisode(self.env, render)
+
     def save(self):
-        self.saver.save(self.sess, self.result_folder)
+        global_step = tf.train.global_step(self.sess, self.global_step)
+        print('Saving to %s with global_step %d' % (self.result_dir, global_step))
+        self.saver.save(self.sess, self.result_dir + '/agent', global_step)
+        if not os.path.isfile(self.result_dir + '/config.json'):
+            print('Saving configuration')
+            config = self.config
+            if 'phi' in config:
+                del config['phi']
+            with open(self.result_dir + '/config.json', 'w') as f:
+                json.dump(self.config, f)
+
+
+    def init(self):
+        checkpoint = tf.train.get_checkpoint_state(self.result_dir)
+        if checkpoint is None:
+            self.sess.run(self.init_op)
+        else:
+            print('Loading the model from folder: %s' % self.result_dir)
+            self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
+
+    def play(self):
+        pass
+
+
 
 

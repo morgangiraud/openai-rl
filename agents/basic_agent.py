@@ -34,11 +34,14 @@ class BasicAgent(object):
             self.learnFromEpisode(self.env, render)
 
     def save(self):
-        global_step = tf.train.global_step(self.sess, self.global_step)
-        print('Saving to %s with global_step %d' % (self.result_dir, global_step))
+        global_step_t = tf.train.get_global_step(self.graph)
+        global_step = tf.train.global_step(self.sess, global_step_t)
+        if self.config['debug']:
+            print('Saving to %s with global_step %d' % (self.result_dir, global_step))
         self.saver.save(self.sess, self.result_dir + '/agent', global_step)
         if not os.path.isfile(self.result_dir + '/config.json'):
-            print('Saving configuration')
+            if self.config['debug']:
+                print('Saving configuration')
             config = self.config
             if 'phi' in config:
                 del config['phi']
@@ -51,12 +54,24 @@ class BasicAgent(object):
         if checkpoint is None:
             self.sess.run(self.init_op)
         else:
-            print('Loading the model from folder: %s' % self.result_dir)
+            if self.config['debug']:
+                print('Loading the model from folder: %s' % self.result_dir)
             self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
 
-    def play(self):
-        pass
+    def play(self, env, render=True):
+        obs = env.reset()
+        score = 0
+        done = False
+        while True:
+            if render:
+                env.render()
 
+            act, state = self.act(obs)
+            next_obs, reward, done, info = env.step(act)
+            score += reward
 
+            obs = next_obs
+            if done:
+                break
 
-
+        return score

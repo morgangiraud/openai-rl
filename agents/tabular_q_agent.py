@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from agents import BasicAgent, phis
+from agents import BasicAgent, phis, capacities
 
 class TabularQAgent(BasicAgent):
     """
@@ -13,6 +13,7 @@ class TabularQAgent(BasicAgent):
 
         self.N0 = config['N0']
         self.min_eps = config['min_eps']
+        self.discount = 1
 
         self.graph = self.buildGraph(tf.Graph())
 
@@ -22,40 +23,23 @@ class TabularQAgent(BasicAgent):
 
     def buildGraph(self, graph):
         with graph.as_default():
-            self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
-            self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
-            self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.discount = 1
-
             with tf.variable_scope('Qs'):
+                self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
                 self.Qs = tf.Variable(
                     initial_value=np.zeros([self.nb_state, self.action_space.n])
                     , name = "Qs"
                     , dtype=tf.float32
                 )
-                self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
                 self.q_preds = self.Qs[self.inputs]
 
-            with tf.variable_scope('Policy'):
-                eps = tf.maximum(self.N0_t / (self.N0_t + self.N_s[self.inputs]), self.min_eps_t)
-                update_N_s = tf.scatter_add(self.N_s, self.inputs, 1)
-                cond = tf.greater(tf.random_uniform([], 0, 1), eps)
-                pred_action = tf.cast(tf.argmax(self.q_preds, 0), tf.int32)
-                random_action = tf.random_uniform([], 0, self.env.action_space.n, dtype=tf.int32)
-                with tf.control_dependencies([update_N_s]):
-                    self.action_t = tf.cond(cond, lambda: pred_action, lambda: random_action)
-                self.q_t = self.q_preds[self.action_t]
+            self.action_t = capacities.epsGreedy(
+                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
+            )
 
-            with tf.variable_scope('Training'):
-                self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
-                self.next_state = tf.placeholder(tf.int32, shape=[], name="nextState")
-                next_max_action_t = tf.cast(tf.argmax(self.Qs[self.next_state], 0), tf.int32)
-                target_q = tf.stop_gradient(self.reward + self.discount * self.Qs[self.next_state, next_max_action_t])
-                self.loss = 1/2 * tf.square(target_q - self.q_t)
-
-                adam = tf.train.AdamOptimizer(self.lr)
-                self.global_step = tf.Variable(0, trainable=False)
-                self.train_op = adam.minimize(self.loss, global_step=self.global_step)
+            adam = tf.train.AdamOptimizer(self.lr)
+            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t, adam
+            )
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)
@@ -65,8 +49,7 @@ class TabularQAgent(BasicAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id = tf.Variable(0, trainable=False)
-            self.inc_ep_id_op = tf.assign(self.episode_id, self.episode_id + 1)
+            self.episode_id, self.inc_ep_id_op = capacities.episodeCount()
 
             self.saver = tf.train.Saver()
 
@@ -118,24 +101,6 @@ class TabularQAgent(BasicAgent):
 
         return
 
-    def play(self, env, render=True):
-        obs = env.reset()
-        score = 0
-        done = False
-        while True:
-            if render:
-                env.render()
-
-            act, state_id = self.act(obs)
-            next_obs, reward, done, info = env.step(act)
-            score += reward
-
-            obs = next_obs
-            if done:
-                break
-
-        return
-
 class BackwardTabularQAgent(TabularQAgent):
     """
     Agent implementing Backward TD(lambda) tabular Q-learning.
@@ -157,15 +122,10 @@ class BackwardTabularQAgent(TabularQAgent):
                 self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
                 self.q_preds = self.Qs[self.inputs]
 
-            with tf.variable_scope('Policy'):
-                eps = tf.maximum(self.N0_t / (self.N0_t + self.N_s[self.inputs]), self.min_eps_t)
-                update_N_s = tf.scatter_add(self.N_s, self.inputs, 1)
-                cond = tf.greater(tf.random_uniform([], 0, 1), eps)
-                pred_action = tf.cast(tf.argmax(self.q_preds, 0), tf.int32)
-                random_action = tf.random_uniform([], 0, self.env.action_space.n, dtype=tf.int32)
-                with tf.control_dependencies([update_N_s]):
-                    self.action_t = tf.cond(cond, lambda: pred_action, lambda: random_action)
-                self.q_t = self.q_preds[self.action_t]
+            self.action_t = capacities.epsGreedy(
+                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
+            )
+            self.q_t = self.q_preds[self.action_t]
 
             with tf.variable_scope('Training'):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
@@ -176,7 +136,7 @@ class BackwardTabularQAgent(TabularQAgent):
                 self.loss = - tf.stop_gradient(target_q - self.q_t) * self.Et * self.Qs
 
                 adam = tf.train.AdamOptimizer(self.lr)
-                self.global_step = tf.Variable(0, trainable=False)
+                self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
                 self.train_op = adam.minimize(self.loss, global_step=self.global_step)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
@@ -187,8 +147,7 @@ class BackwardTabularQAgent(TabularQAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id = tf.Variable(0, trainable=False)
-            self.inc_ep_id_op = tf.assign(self.episode_id, self.episode_id + 1)
+            self.episode_id, self.inc_ep_id_op = capacities.episodeCount()
 
             self.saver = tf.train.Saver()
 
@@ -271,26 +230,15 @@ class TabularQplusAgent(TabularQAgent):
                 self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
                 self.q_preds = self.Qs[self.inputs]
 
-            with tf.variable_scope('Policy'):
-                eps = tf.maximum(self.N0_t / (self.N0_t + self.N_s[self.inputs]), self.min_eps_t)
-                update_N_s = tf.scatter_add(self.N_s, self.inputs, 1)
-                cond = tf.greater(tf.random_uniform([], 0, 1), eps)
-                pred_action = tf.cast(tf.argmax(self.q_preds, 0), tf.int32)
-                random_action = tf.random_uniform([], 0, self.env.action_space.n, dtype=tf.int32)
-                with tf.control_dependencies([update_N_s]):
-                    self.action_t = tf.cond(cond, lambda: pred_action, lambda: random_action)
-                self.q_t = self.q_preds[self.action_t]
+            self.action_t = capacities.epsGreedy(
+                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
+            )
 
-            with tf.variable_scope('Training'):
-                self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
-                self.next_state = tf.placeholder(tf.int32, shape=[], name="nextState")
-                next_max_action_t = tf.cast(tf.argmax(self.Qs[self.next_state], 0), tf.int32)
-                target_q = tf.stop_gradient(self.reward + self.discount * self.Qs[self.next_state, next_max_action_t])
-                self.loss = 1/2 * tf.square(target_q - self.q_t)
+            adam = tf.train.AdamOptimizer(self.lr)
+            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t, adam
+            )
 
-                adam = tf.train.AdamOptimizer(self.lr)
-                self.global_step = tf.Variable(0, trainable=False)
-                self.train_op = adam.minimize(self.loss, global_step=self.global_step)
             # Experienced replay part
             with tf.variable_scope('ExperienceReplay'):
                 self.er_inputs = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
@@ -315,8 +263,7 @@ class TabularQplusAgent(TabularQAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id = tf.Variable(0, trainable=False)
-            self.inc_ep_id_op = tf.assign(self.episode_id, self.episode_id + 1)
+            self.episode_id, self.inc_ep_id_op = capacities.episodeCount()
 
             self.saver = tf.train.Saver()
 
@@ -415,26 +362,14 @@ class TabularFixedQplusAgent(TabularQAgent):
                 )
                 self.update_fixed_Q_op = tf.assign(self.fixed_Qs, self.Qs)
 
-            with tf.variable_scope('Policy'):
-                eps = tf.maximum(self.N0_t / (self.N0_t + self.N_s[self.inputs]), self.min_eps_t)
-                update_N_s = tf.scatter_add(self.N_s, self.inputs, 1)
-                cond = tf.greater(tf.random_uniform([], 0, 1), eps)
-                pred_action = tf.cast(tf.argmax(self.q_preds, 0), tf.int32)
-                random_action = tf.random_uniform([], 0, self.env.action_space.n, dtype=tf.int32)
-                with tf.control_dependencies([update_N_s]):
-                    self.action_t = tf.cond(cond, lambda: pred_action, lambda: random_action)
-                self.q_t = self.q_preds[self.action_t]
+            self.action_t = capacities.epsGreedy(
+                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
+            )
 
-            with tf.variable_scope('Training'):
-                self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
-                self.next_state = tf.placeholder(tf.int32, shape=[], name="nextState")
-                next_max_action_t = tf.cast(tf.argmax(self.Qs[self.next_state], 0), tf.int32)
-                target_q = tf.stop_gradient(self.reward + self.discount * self.Qs[self.next_state, next_max_action_t])
-                self.loss = 1/2 * tf.square(target_q - self.q_t)
-
-                adam = tf.train.AdamOptimizer(self.lr)
-                self.global_step = tf.Variable(0, trainable=False)
-                self.train_op = adam.minimize(self.loss, global_step=self.global_step)
+            adam = tf.train.AdamOptimizer(self.lr)
+            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t, adam
+            )
 
             with tf.variable_scope('ExperienceReplay'):
                 self.er_inputs = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
@@ -459,8 +394,7 @@ class TabularFixedQplusAgent(TabularQAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id = tf.Variable(0, trainable=False)
-            self.inc_ep_id_op = tf.assign(self.episode_id, self.episode_id + 1)
+            self.episode_id, self.inc_ep_id_op = capacities.episodeCount()
 
             self.saver = tf.train.Saver()
 
@@ -560,15 +494,10 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
                 )
                 self.update_fixed_Q_op = tf.assign(self.fixed_Qs, self.Qs)
 
-            with tf.variable_scope('Policy'):
-                eps = tf.maximum(self.N0_t / (self.N0_t + self.N_s[self.inputs]), self.min_eps_t)
-                update_N_s = tf.scatter_add(self.N_s, self.inputs, 1)
-                cond = tf.greater(tf.random_uniform([], 0, 1), eps)
-                pred_action = tf.cast(tf.argmax(self.q_preds, 0), tf.int32)
-                random_action = tf.random_uniform([], 0, self.env.action_space.n, dtype=tf.int32)
-                with tf.control_dependencies([update_N_s]):
-                    self.action_t = tf.cond(cond, lambda: pred_action, lambda: random_action)
-                self.q_t = self.q_preds[self.action_t]
+            self.action_t = capacities.epsGreedy(
+                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
+            )
+            self.q_t = self.q_preds[self.action_t]
 
             with tf.variable_scope('Training'):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
@@ -579,7 +508,7 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
                 self.loss = - tf.stop_gradient(target_q - self.q_t) * self.Et * self.Qs
                 
                 adam = tf.train.AdamOptimizer(self.lr)
-                self.global_step = tf.Variable(0, trainable=False)
+                self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
                 self.train_op = adam.minimize(self.loss, global_step=self.global_step)
 
             with tf.variable_scope('ExperienceReplay'):
@@ -606,8 +535,7 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id = tf.Variable(0, trainable=False)
-            self.inc_ep_id_op = tf.assign(self.episode_id, self.episode_id + 1)
+            self.episode_id, self.inc_ep_id_op = capacities.episodeCount()
 
             self.saver = tf.train.Saver()
 

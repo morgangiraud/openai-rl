@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from agents import BasicAgent
+from agents import BasicAgent, capacities
 
 class DeepQAgent(BasicAgent):
     """
@@ -10,6 +10,8 @@ class DeepQAgent(BasicAgent):
 
     def __init__(self, config, env):
         super(DeepQAgent, self).__init__(config, env)
+
+        self.nb_units = config['nb_units']
 
         self.N0 = config['N0']
         self.min_eps = config['min_eps']
@@ -32,7 +34,6 @@ class DeepQAgent(BasicAgent):
             self.N = tf.Variable(0., dtype=tf.float32, name='N', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
             self.discount = 1
-            self.nb_hidden_units = 100
             self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
             self.replayMemory = np.array([], dtype=self.replayMemoryDt)
             
@@ -40,30 +41,25 @@ class DeepQAgent(BasicAgent):
             with tf.variable_scope('Qs'):
                 self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
-                W1 = tf.get_variable('W1', shape=[self.observation_space.shape[0] + 1, self.nb_hidden_units], initializer=tf.random_normal_initializer(stddev=1e-2))
-                b1 = tf.get_variable('b1', shape=[self.nb_hidden_units], initializer=tf.zeros_initializer())
+                W1 = tf.get_variable('W1', shape=[self.observation_space.shape[0] + 1, self.nb_units], initializer=tf.random_normal_initializer(stddev=1e-2))
+                b1 = tf.get_variable('b1', shape=[self.nb_units], initializer=tf.zeros_initializer())
                 a1 = tf.nn.relu(tf.matmul(self.inputs, W1) + b1)
 
-                W2 = tf.get_variable('W2', shape=[self.nb_hidden_units, self.action_space.n], initializer=tf.random_normal_initializer(stddev=1e-2))
+                W2 = tf.get_variable('W2', shape=[self.nb_units, self.action_space.n], initializer=tf.random_normal_initializer(stddev=1e-2))
                 b2 = tf.get_variable('b2', shape=[self.action_space.n], initializer=tf.zeros_initializer())
                 out = tf.matmul(a1, W2) + b2
 
                 self.q_preds = tf.squeeze(out)
                 
-            with tf.variable_scope('Policy'):
-                eps = tf.maximum(self.N0_t / (self.N0_t + self.N), self.min_eps_t)
-                update_N = tf.assign(self.N, self.N + 1)
-                cond = tf.greater(tf.random_uniform([], 0, 1), eps)
-                pred_action = tf.cast(tf.argmax(self.q_preds, 0), tf.int32)
-                random_action = tf.random_uniform([], 0, self.env.action_space.n, dtype=tf.int32)
-                with tf.control_dependencies([update_N]):
-                    self.action_t = tf.cond(cond, lambda: pred_action, lambda: random_action)
-                self.q_t = self.q_preds[self.action_t]
+            self.action_t = capacities.epsGreedy(
+                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps
+            )
+            self.q_t = self.q_preds[self.action_t]
 
             with tf.variable_scope('FixedQs'):
-                f_W1 = tf.get_variable('f_W1', shape=[self.observation_space.shape[0] + 1, self.nb_hidden_units])
-                f_b1 = tf.get_variable('f_b1', shape=[self.nb_hidden_units])
-                f_W2 = tf.get_variable('f_W2', shape=[self.nb_hidden_units, self.action_space.n])
+                f_W1 = tf.get_variable('f_W1', shape=[self.observation_space.shape[0] + 1, self.nb_units])
+                f_b1 = tf.get_variable('f_b1', shape=[self.nb_units])
+                f_W2 = tf.get_variable('f_W2', shape=[self.nb_units, self.action_space.n])
                 f_b2 = tf.get_variable('f_b2', shape=[self.action_space.n])
                 self.update_f_W1_op = tf.assign(f_W1, W1)
                 self.update_f_b1_op = tf.assign(f_b1, b1)
@@ -83,7 +79,7 @@ class DeepQAgent(BasicAgent):
                     self.loss = 1/2 * tf.square(target_q - self.q_t)
 
                 adam = tf.train.AdamOptimizer(self.lr)
-                self.global_step = tf.Variable(0, trainable=False)
+                self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
                 self.train_op = adam.minimize(self.loss, global_step=self.global_step)
 
             with tf.variable_scope('ExperienceReplay'):
@@ -131,11 +127,12 @@ class DeepQAgent(BasicAgent):
         return graph
 
     def act(self, obs):
+        state = [ np.concatenate((obs, [0])) ]
         act = self.sess.run(self.action_t, feed_dict={
-            self.inputs: [ np.concatenate((obs, [0])) ]
+            self.inputs: state
         })
 
-        return act
+        return (act, state)
 
     def learnFromEpisode(self, env, render):
         obs = env.reset()
@@ -147,7 +144,7 @@ class DeepQAgent(BasicAgent):
             if render:
                 env.render()
 
-            act = self.act(obs)
+            act, state = self.act(obs)
             next_obs, reward, done, info = env.step(act)
 
             loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={

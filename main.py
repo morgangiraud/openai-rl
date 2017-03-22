@@ -42,12 +42,14 @@ def main(_):
     config = flags.FLAGS.__flags.copy()
     if config['hyperband']:
         print('Starting hyperband search')
+        config['result_dir_prefix'] = dir + '/results/hyperband/' + str(int(time.time()))
         get_params = make_get_params(config)
         run_params = make_run_params(config['env_name'], config['agent_name'])
 
         hb = Hyperband( get_params, run_params )
-        results = hb.run( skip_last = 1 )   # shorter run
         results = hb.run()
+        with open(config['result_dir_prefix'] + '/hb_results.json', 'w') as f:
+            json.dump(results, f)
     else:
         # if os.path.isfile(config['result_dir'] + '/config.json'):
         #     print('Warning: loading config from file: %s' % (config['result_dir'] + '/config.json'))

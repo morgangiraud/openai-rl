@@ -135,14 +135,16 @@ def make_get_params(config):
             'debug': config['debug'],
             'agent_name': config['agent_name'],
             'env_name': config['env_name'],
+            'result_dir_prefix': config['result_dir_prefix'], 
         }
 
     return get_params
 
 def make_run_params(env_name, agent_name):
-    def run_params(max_iter, config):
-        config['max_iter'] = int(max_iter)
-        config['result_dir'] = dir + '/results/' + config['env_name'] + '/' + config['agent_name'] + '/' + str(int(time()))
+    def run_params(nb_epoch, config):
+        # Max number of epochs is 81
+        config['max_iter'] = int(nb_epoch) * 30
+        config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/' + str(int(time()))
 
         # We create the agent
         env = gym.make(env_name)

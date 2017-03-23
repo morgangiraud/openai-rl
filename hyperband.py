@@ -11,7 +11,7 @@
 #                       9     9         3     27        1     81
 #                       3     27        1     81
 #                       1     81
-import gym, os, re, multiprocessing
+import gym, os, shutil, re, multiprocessing
 import concurrent.futures
 import numpy as np
 
@@ -25,6 +25,7 @@ dir = os.path.dirname(os.path.realpath(__file__))
 
 def execute_run(counter, func, n_iterations, t, dry_run):
     start_time = time()
+    t['run'] = counter
 
     if dry_run:
         result = { 'loss': random(), 'log_loss': random(), 'auc': random()}
@@ -127,13 +128,9 @@ class Hyperband:
                 T = [ T[i] for i in indices if not early_stops[i]]
                 T = T[ 0:int( n_configs / self.eta )]
 
-        for result in self.results:
-            if result['counter'] == self.best_counter:
-                print('Best configuration found:')
-                print(result)
-                break
+        results = sorted(self.results, key=lambda result: result['loss'])
 
-        return { 'results':  self.results, 'best_counter':self.best_counter}
+        return {'results': results, 'best_counter':self.best_counter}
   
 def make_get_params(config):
     get_N0 = lambda: np.random.randint(1, 1000)
@@ -192,7 +189,11 @@ def make_get_params(config):
 
 def run_params(nb_epoch, config):
     config['max_iter'] = int(nb_epoch) * 50
-    config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/' + str(int(time() * 10000))
+    config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/run-' + config['run']
+
+    # If we are reusing a configuration, we remove its folder before next training
+    if os.path.exists(config['result_dir']):
+        shutil.rmtree(config['result_dir'])
 
     # We create the agent
     env = gym.make(config['env_name'])
@@ -202,9 +203,13 @@ def run_params(nb_epoch, config):
     agent.train()
     agent.save()
 
+    # If we are training for less than 9 epochs, we remove the folder
+    if nb_epoch < 9:
+        shutil.rmtree(config['result_dir'])
+
     # We test the agent and get the mean score for metrics
     score = []
-    for i in range(100):
+    for i in range(200):
         score.append(agent.play(env, render=False))
     loss = - np.mean(score) # Hyperbands want a loss
 

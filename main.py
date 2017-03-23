@@ -47,7 +47,7 @@ def main(_):
         get_params = make_get_params(config)
 
         hb = Hyperband( get_params, run_params )
-        results = hb.run(dry_run=config['hb_dry_run'])
+        results = hb.run(skip_last=True, dry_run=config['hb_dry_run'])
         if not os.path.exists(config['result_dir_prefix']):
             os.makedirs(config['result_dir_prefix'])
         with open(config['result_dir_prefix'] + '/hb_results.json', 'w') as f:

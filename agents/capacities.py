@@ -27,7 +27,7 @@ def epsGreedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
 
     return action_t
 
-def MSETabularQLearning(Qs_t, discount, q_preds, action_t, optimizer):
+def MSETabularQLearning(Qs_t, discount, q_preds, action_t, optimizer=None):
     with tf.variable_scope('MSEQLearning'):
         q_t = q_preds[action_t]
         reward = tf.placeholder(tf.float32, shape=[], name="reward")
@@ -37,6 +37,9 @@ def MSETabularQLearning(Qs_t, discount, q_preds, action_t, optimizer):
         loss = 1/2 * tf.square(target_q - q_t)
 
         global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+        if optimizer == None:
+            learning_rate = tf.train.inverse_time_decay(1., global_step, 1, 0.001, staircase=False, name="decay_lr")
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate)
         train_op = optimizer.minimize(loss, global_step=global_step)
 
     return (reward, next_state, loss, train_op)

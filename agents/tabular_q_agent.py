@@ -207,7 +207,6 @@ class TabularQplusAgent(TabularQAgent):
     Agent implementing tabular Q-learning with experience replay.
     """
     def __init__(self, config, env):
-        self.er_lr = config['er_lr']
         self.er_every = config['er_every']
         self.er_batch_size = config['er_batch_size']
         self.er_epoch_size = config['er_epoch_size']
@@ -254,7 +253,7 @@ class TabularQplusAgent(TabularQAgent):
                 er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
                 er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
                 er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
-                er_adam = tf.train.AdamOptimizer(self.er_lr)
+                er_adam = tf.train.AdamOptimizer(self.lr)
                 self.er_global_step = tf.Variable(0, trainable=False)
                 self.er_train_op = er_adam.minimize(er_loss, global_step=self.er_global_step)
 
@@ -330,7 +329,6 @@ class TabularFixedQplusAgent(TabularQAgent):
     Agent implementing tabular Q-learning with fixed Qs and experience replay.
     """
     def __init__(self, config, env):
-        self.er_lr = config['er_lr']
         self.er_every = config['er_every']
         self.er_batch_size = config['er_batch_size']
         self.er_epoch_size = config['er_epoch_size']
@@ -385,7 +383,7 @@ class TabularFixedQplusAgent(TabularQAgent):
                 er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
                 er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
                 er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
-                er_adam = tf.train.AdamOptimizer(self.er_lr)
+                er_adam = tf.train.AdamOptimizer(self.lr)
                 self.er_global_step = tf.Variable(0, trainable=False)
                 self.er_train_op = er_adam.minimize(er_loss, global_step=self.er_global_step)
 
@@ -462,7 +460,6 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
     Agent implementing backward TD(lambda) tabular Q-learning with fixed Qs and experience replay.
     """
     def __init__(self, config, env):
-        self.er_lr = config['er_lr']
         self.er_every = config['er_every']
         self.er_batch_size = config['er_batch_size']
         self.er_epoch_size = config['er_epoch_size']
@@ -525,7 +522,7 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
                 er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
                 er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
                 er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
-                er_adam = tf.train.AdamOptimizer(self.er_lr)
+                er_adam = tf.train.AdamOptimizer(self.lr)
                 self.er_global_step = tf.Variable(0, trainable=False)
                 self.er_train_op = er_adam.minimize(er_loss, global_step=self.er_global_step)
 

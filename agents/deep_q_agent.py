@@ -16,7 +16,6 @@ class DeepQAgent(BasicAgent):
         self.N0 = config['N0']
         self.min_eps = config['min_eps']
 
-        self.er_lr = config['er_lr']
         self.er_every = config['er_every']
         self.er_batch_size = config['er_batch_size']
         self.er_epoch_size = config['er_epoch_size']
@@ -110,7 +109,7 @@ class DeepQAgent(BasicAgent):
                 )
                 er_target_qs = scan_res[1]
                 er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
-                er_adam = tf.train.AdamOptimizer(self.er_lr)
+                er_adam = tf.train.AdamOptimizer(self.lr)
                 self.er_train_op = er_adam.minimize(er_loss)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])

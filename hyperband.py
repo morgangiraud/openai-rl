@@ -143,13 +143,11 @@ def make_get_params(config):
 
     def get_tabular_params():
         get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
-        get_er_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
 
         return {
             'lr': get_lr(),
             'N0': get_N0(),
             'min_eps': get_min_eps(),
-            'er_lr': get_er_lr(),
             'er_every': get_er_every(),
             'er_batch_size': get_er_batch_size(),
             'er_epoch_size': get_er_epoch_size(),
@@ -162,15 +160,13 @@ def make_get_params(config):
 
     def get_deep_params():
         get_lr = lambda: 1e-4 + (1e-2 - 1e-4) * np.random.random(1)[0]
-        get_nb_units = lambda: np.random.randint(1, 200)
-        get_er_lr = lambda: 1e-4 + (1e-2 - 1e-4) * np.random.random(1)[0]
+        get_nb_units = lambda: np.random.randint(10, 100)
         
         return {
             'lr': get_lr(),
             'nb_units': get_nb_units(),
             'N0': get_N0(),
             'min_eps': get_min_eps(),
-            'er_lr': get_er_lr(),
             'er_every': get_er_every(),
             'er_batch_size': get_er_batch_size(),
             'er_epoch_size': get_er_epoch_size(),
@@ -188,8 +184,8 @@ def make_get_params(config):
 
 
 def run_params(nb_epoch, config):
-    config['max_iter'] = int(nb_epoch) * 50
-    config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/run-' + config['run']
+    config['max_iter'] = int(nb_epoch) * 100
+    config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/run-' + str(config['run'])
 
     # If we are reusing a configuration, we remove its folder before next training
     if os.path.exists(config['result_dir']):

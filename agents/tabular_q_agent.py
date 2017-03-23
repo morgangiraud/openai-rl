@@ -17,7 +17,10 @@ class TabularQAgent(BasicAgent):
 
         self.graph = self.buildGraph(tf.Graph())
 
-        self.sess = tf.Session(graph=self.graph)
+        # For tabular use, no need for a lot of GPU
+        gpu_options = tf.GPUOptions(allow_growth=True)
+        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
+        self.sess = tf.Session(config=sessConfig, graph=self.graph)
         self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
         self.init()
 

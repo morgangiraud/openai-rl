@@ -39,6 +39,7 @@ class BasicAgent(object):
         if self.config['debug']:
             print('Saving to %s with global_step %d' % (self.result_dir, global_step))
         self.saver.save(self.sess, self.result_dir + '/agent', global_step)
+        
         if not os.path.isfile(self.result_dir + '/config.json'):
             if self.config['debug']:
                 print('Saving configuration')

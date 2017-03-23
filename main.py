@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 
 from agents import make_agent
-from hyperband import Hyperband, make_get_params, make_run_params
+from hyperband import Hyperband, make_get_params, run_params
 
 dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -11,6 +11,7 @@ flags = tf.app.flags
 
 # Hyperband
 flags.DEFINE_boolean('hyperband', False, 'Perform a hyperband search of hyperparameters')
+flags.DEFINE_boolean('hb_dry_run', False, 'Perform a hyperband dry_run')
 
 # Agent
 flags.DEFINE_string('agent_name', 'DeepQAgent', 'Name of the agent')
@@ -44,10 +45,11 @@ def main(_):
         print('Starting hyperband search')
         config['result_dir_prefix'] = dir + '/results/hyperband/' + str(int(time.time()))
         get_params = make_get_params(config)
-        run_params = make_run_params(config['env_name'], config['agent_name'])
 
         hb = Hyperband( get_params, run_params )
-        results = hb.run()
+        results = hb.run(dry_run=config['hb_dry_run'])
+        if not os.path.exists(config['result_dir_prefix']):
+            os.makedirs(config['result_dir_prefix'])
         with open(config['result_dir_prefix'] + '/hb_results.json', 'w') as f:
             json.dump(results, f)
     else:

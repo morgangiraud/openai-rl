@@ -1,8 +1,18 @@
 #############################################################################
 # Taken from https://github.com/zygmuntz/hyperband/blob/master/hyperband.py #
 #############################################################################
-
-import gym, os
+# n_i: number of configurations
+# r_i: number of iterations/epochs
+# max_iter = 81        s=4             s=3             s=2             s=1             s=0
+# eta = 3              n_i   r_i       n_i   r_i       n_i   r_i       n_i   r_i       n_i   r_i
+# B = 5*max_iter       ---------       ---------       ---------       ---------       ---------
+#                       81    1         27    3         9     9         6     27        5     81
+#                       27    3         9     9         3     27        2     81
+#                       9     9         3     27        1     81
+#                       3     27        1     81
+#                       1     81
+import gym, os, re, multiprocessing
+import concurrent.futures
 import numpy as np
 
 from random import random
@@ -12,6 +22,20 @@ from time import time, ctime
 from agents import make_agent
 
 dir = os.path.dirname(os.path.realpath(__file__))
+
+def execute_run(counter, func, n_iterations, t, dry_run):
+    start_time = time()
+
+    if dry_run:
+        result = { 'loss': random(), 'log_loss': random(), 'auc': random()}
+    else:
+        result = func( n_iterations, t )   # <---
+
+    seconds = int( round( time() - start_time ))
+    print("Run {} | {}".format(counter, ctime()))
+    print("%d seconds." % seconds )
+
+    return counter, result, n_iterations, t, seconds
 
 class Hyperband:
   
@@ -34,7 +58,6 @@ class Hyperband:
 
     # can be called multiple times
     def run( self, skip_last = 0, dry_run = False ):
-    
         for s in reversed( range( self.s_max + 1 )):
           
             # initial number of configurations
@@ -55,31 +78,25 @@ class Hyperband:
                 n_iterations = r * self.eta ** ( i )
 
                 print("\n*** {} configurations x {:.1f} iterations each".format(
-                    n_configs, n_iterations
+                    int(n_configs), n_iterations
                 ))
 
                 val_losses = []
                 early_stops = []
 
+                executor = concurrent.futures.ProcessPoolExecutor(multiprocessing.cpu_count())
+                futures = []
+
                 for t in T:
-              
                     self.counter += 1
-                    print("\n{} | {} | best so far: {:.4f} (run {})\n".format(
-                        self.counter, ctime(), self.best_loss, self.best_counter 
-                    ))
-
-                    start_time = time()
-
-                    if dry_run:
-                        result = { 'loss': random(), 'log_loss': random(), 'auc': random()}
-                    else:
-                        result = self.try_params( n_iterations, t )   # <---
+                    futures.append(executor.submit(execute_run, self.counter, self.try_params, n_iterations, t, dry_run))
+                concurrent.futures.wait(futures)
+              
+                for future in futures:
+                    counter, result, n_iterations, t, seconds = future.result()
 
                     assert( type( result ) == dict )
                     assert( 'loss' in result )
-
-                    seconds = int( round( time() - start_time ))
-                    print("\n{} seconds.".format( seconds ))
 
                     loss = result['loss'] 
                     val_losses.append( loss )
@@ -91,37 +108,66 @@ class Hyperband:
                     # could do it be checking results each time, but hey
                     if loss < self.best_loss:
                         self.best_loss = loss
-                        self.best_counter = self.counter
+                        self.best_counter = counter
 
-                    result['counter'] = self.counter
+                    result['counter'] = counter
                     result['seconds'] = seconds
                     result['params'] = t
                     result['iterations'] = n_iterations
 
                     self.results.append( result )
+
+                print("*** Set %d-%d finished | best so far: %4f (run %d)" % (
+                    s, i, self.best_loss, self.best_counter 
+                ))
             
                 # select a number of best configurations for the next loop
                 # filter out early stops, if any
                 indices = np.argsort( val_losses )
                 T = [ T[i] for i in indices if not early_stops[i]]
                 T = T[ 0:int( n_configs / self.eta )]
-    
-        return self.results
+
+        for result in self.results:
+            if result['counter'] == self.best_counter:
+                print('Best configuration found:')
+                print(result)
+                break
+
+        return { 'results':  self.results, 'best_counter':self.best_counter}
   
 def make_get_params(config):
-    get_lr = lambda: 1e-5 + (1e-1 - 1e-5) * np.random.random(1)[0]
-    get_nb_units = lambda: np.random.randint(1, 200)
-
     get_N0 = lambda: np.random.randint(1, 1000)
     get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
 
-    get_er_lr = lambda: 1e-5 + (1e-1 - 1e-5) * np.random.random(1)[0]
     get_er_every = lambda: np.random.randint(1, 1000)
-    get_er_batch_size = lambda: np.random.randint(4, 1024)
-    get_er_epoch_size = lambda: np.random.randint(20, 200)
+    get_er_batch_size = lambda: np.random.randint(4, 256)
+    get_er_epoch_size = lambda: np.random.randint(1, 200)
     get_er_rm_size = lambda: np.random.randint(5000, 40000)
 
-    def get_params():
+    def get_tabular_params():
+        get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
+        get_er_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
+
+        return {
+            'lr': get_lr(),
+            'N0': get_N0(),
+            'min_eps': get_min_eps(),
+            'er_lr': get_er_lr(),
+            'er_every': get_er_every(),
+            'er_batch_size': get_er_batch_size(),
+            'er_epoch_size': get_er_epoch_size(),
+            'er_rm_size': get_er_rm_size(),
+            'debug': config['debug'],
+            'agent_name': config['agent_name'],
+            'env_name': config['env_name'],
+            'result_dir_prefix': config['result_dir_prefix'], 
+        }
+
+    def get_deep_params():
+        get_lr = lambda: 1e-4 + (1e-2 - 1e-4) * np.random.random(1)[0]
+        get_nb_units = lambda: np.random.randint(1, 200)
+        get_er_lr = lambda: 1e-4 + (1e-2 - 1e-4) * np.random.random(1)[0]
+        
         return {
             'lr': get_lr(),
             'nb_units': get_nb_units(),
@@ -138,30 +184,31 @@ def make_get_params(config):
             'result_dir_prefix': config['result_dir_prefix'], 
         }
 
-    return get_params
+    if re.compile("tabular", re.I).search(config['agent_name']):
+        return get_tabular_params
+    else:
+        return get_deep_params
 
-def make_run_params(env_name, agent_name):
-    def run_params(nb_epoch, config):
-        # Max number of epochs is 81
-        config['max_iter'] = int(nb_epoch) * 100
-        config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/' + str(int(time()))
 
-        # We create the agent
-        env = gym.make(env_name)
-        agent = make_agent(config, env)
+def run_params(nb_epoch, config):
+    config['max_iter'] = int(nb_epoch) * 50
+    config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/' + str(int(time() * 10000))
 
-        # We tran the agent
-        agent.train()
-        agent.save()
+    # We create the agent
+    env = gym.make(config['env_name'])
+    agent = make_agent(config, env)
 
-        # We test the agent and get the mean score for metrics
-        score = []
-        for i in range(50):
-            score.append(agent.play(env, render=False))
-        loss = - np.mean(score) # Hyperbands want a loss
+    # We tran the agent
+    agent.train()
+    agent.save()
 
-        return {
-            'loss': loss
-        }
+    # We test the agent and get the mean score for metrics
+    score = []
+    for i in range(100):
+        score.append(agent.play(env, render=False))
+    loss = - np.mean(score) # Hyperbands want a loss
 
-    return run_params
+    return {
+        'loss': loss
+    }
+

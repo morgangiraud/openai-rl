@@ -23,6 +23,9 @@ class BasicAgent(object):
 
         self.lr = config['lr']
 
+        # Play part
+        self.play_counter = 0
+
     def act(self, obs, eps=None):
         pass
 
@@ -69,10 +72,16 @@ class BasicAgent(object):
 
             act, state = self.act(obs)
             next_obs, reward, done, info = env.step(act)
+            
             score += reward
-
             obs = next_obs
             if done:
                 break
+
+        self.play_counter += 1
+        pscore_sum = self.sess.run(self.pscore_sum_t, feed_dict={
+            self.pscore_plh: score,
+        })
+        self.sw.add_summary(pscore_sum, self.play_counter)
 
         return score

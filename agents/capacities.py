@@ -27,6 +27,26 @@ def epsGreedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
 
     return action_t
 
+def tabularQValue(nb_state, nb_action):    
+    scope = tf.VariableScope('TabularQValue')
+    with tf.variable_scope(scope, reuse=False):
+        Q = tf.get_variable(
+            'Q'
+            , shape=[nb_state, nb_action]
+            , initializer=tf.zeros_initializer()
+            , dtype=tf.float32
+        )
+
+    def apply(inputs_t):
+        with tf.variable_scope(scope, reuse=True):
+            Q = tf.get_variable('Q')
+            out = tf.nn.embedding_lookup(Q, inputs_t)
+
+        return out
+        
+    return apply
+
+
 def MSETabularQLearning(Qs_t, discount, q_preds, action_t, optimizer=None):
     with tf.variable_scope('MSEQLearning'):
         q_t = q_preds[action_t]
@@ -44,9 +64,9 @@ def MSETabularQLearning(Qs_t, discount, q_preds, action_t, optimizer=None):
 
     return (reward, next_state, loss, train_op)
 
-def episodeCount():
-    episode_id = tf.Variable(0, trainable=False)
-    inc_ep_id_op = tf.assign(episode_id, episode_id + 1)
+def counter():
+    count_t = tf.Variable(0, trainable=False)
+    inc_count_op = tf.assign(count_t, count_t + 1)
 
-    return (episode_id, inc_ep_id_op)
+    return (count_t, inc_count_op)
 

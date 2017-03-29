@@ -11,7 +11,7 @@
 #                       9     9         3     27        1     81
 #                       3     27        1     81
 #                       1     81
-import gym, os, shutil, re, multiprocessing
+import gym, os, shutil, re, multiprocessing, json
 import concurrent.futures
 import numpy as np
 
@@ -85,7 +85,7 @@ class Hyperband:
                 val_losses = []
                 early_stops = []
 
-                executor = concurrent.futures.ProcessPoolExecutor(multiprocessing.cpu_count())
+                executor = concurrent.futures.ProcessPoolExecutor(int(min(multiprocessing.cpu_count(), 8) / 2))
                 futures = []
 
                 for t in T:
@@ -128,7 +128,10 @@ class Hyperband:
                 T = [ T[i] for i in indices if not early_stops[i]]
                 T = T[ 0:int( n_configs / self.eta )]
 
-        results = sorted(self.results, key=lambda result: result['loss'])
+            results = sorted(self.results, key=lambda result: result['loss'])
+            config = T[0]
+            with open(config['result_dir_prefix'] + '/hb_results.json', 'w') as f:
+                json.dump({'results': results, 'best_counter':self.best_counter}, f)
 
         return {'results': results, 'best_counter':self.best_counter}
   
@@ -137,9 +140,9 @@ def make_get_params(config):
     get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
 
     get_er_every = lambda: np.random.randint(1, 1000)
-    get_er_batch_size = lambda: np.random.randint(4, 256)
+    get_er_batch_size = lambda: np.random.randint(16, 1024)
     get_er_epoch_size = lambda: np.random.randint(1, 200)
-    get_er_rm_size = lambda: np.random.randint(5000, 40000)
+    get_er_rm_size = lambda: np.random.randint(10000, 40000)
 
     def get_tabular_params():
         get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
@@ -184,7 +187,7 @@ def make_get_params(config):
 
 
 def run_params(nb_epoch, config):
-    config['max_iter'] = int(nb_epoch) * 100
+    config['max_iter'] = 1#int(nb_epoch) * 100
     config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/run-' + str(config['run'])
 
     # If we are reusing a configuration, we remove its folder before next training

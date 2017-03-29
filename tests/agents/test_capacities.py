@@ -35,5 +35,28 @@ class TestCapacities(unittest.TestCase):
                 })
                 self.assertEqual(np.array_equal(out2, [ [ [2., 3.] ], [ [4., 5.] ] ]), True)
 
+    def test_policy(self):
+        policy_params = {
+            'nb_inputs': 3
+            , 'nb_units': 3
+            , 'nb_actions': 2
+        }
+        with tf.Graph().as_default():
+            tf.set_random_seed(1)
+
+            inputs = tf.placeholder(tf.float32, shape=[None, 3])
+            probs_t, actions_t = capacities.policy(policy_params, inputs)
+            
+
+            with tf.Session() as sess:
+                sess.run(tf.global_variables_initializer())
+                
+                probs, actions = sess.run([probs_t, actions_t], feed_dict={
+                    inputs: [ [ -24, 10, 10 ]]
+                })
+                self.assertEqual(np.array_equal(np.round(probs, 1), [[ 0.5 , 0.5]]), True)
+                self.assertEqual(np.array_equal(actions, [[0]]), True)
+
+
 if __name__ == "__main__":
     unittest.main()

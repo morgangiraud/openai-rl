@@ -5,7 +5,7 @@ from agents import BasicAgent, capacities
 
 class DeepFixedQPlusAgent(BasicAgent):
     """
-    Agent implementing tabular Q-learning.
+    Agent implementing 2-layer NN Q-learning, using experience replay, fixed Q Network and TD(0).
     """
 
     def __init__(self, config, env):
@@ -104,10 +104,10 @@ class DeepFixedQPlusAgent(BasicAgent):
                 self.next_state = tf.placeholder(tf.float32, shape=[1, self.observation_space.shape[0] + 1], name="nextState")
                 next_q_preds_t = tf.squeeze(self.net(self.next_state, net_scope, True))
                 next_max_action_t = tf.cast(tf.argmax(next_q_preds_t, 0), tf.int32)
-                tartget_q1 = tf.stop_gradient(self.reward + self.discount * next_q_preds_t[next_max_action_t])
-                tartget_q2 = self.reward
+                target_q1 = tf.stop_gradient(self.reward + self.discount * next_q_preds_t[next_max_action_t])
+                target_q2 = self.reward
                 is_done = tf.equal(self.next_state[0, 4], 1)
-                target_q = tf.cond(is_done, lambda: tartget_q2, lambda: tartget_q1)
+                target_q = tf.cond(is_done, lambda: target_q2, lambda: target_q1)
                 with tf.control_dependencies([target_q]):
                     self.loss = 1/2 * tf.square(target_q - self.q_t)
 
@@ -222,7 +222,7 @@ class DeepFixedQPlusAgent(BasicAgent):
 
 class DQNAgent(BasicAgent):
     """
-    Agent implementing tabular Q-learning.
+    Agent implementing The DQN (Experience replay abd fixed Q-Net).
     """
 
     def __init__(self, config, env):

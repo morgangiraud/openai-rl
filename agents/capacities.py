@@ -70,3 +70,75 @@ def counter():
 
     return (count_t, inc_count_op)
 
+
+def policy(network_params, inputs):
+    W1 = tf.get_variable('W1'
+        , shape=[ network_params['nb_inputs'], network_params['nb_units'] ]
+        , initializer=tf.random_normal_initializer(stddev=1e-2)
+    )
+    b1 = tf.get_variable('b1'
+        , shape=[ network_params['nb_units'] ]
+        , initializer=tf.zeros_initializer()
+    )
+    a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
+
+    W2 = tf.get_variable('W2'
+        , shape=[ network_params['nb_units'], network_params['nb_units'] ]
+        , initializer=tf.random_normal_initializer(stddev=1e-2)
+    )
+    b2 = tf.get_variable('b2'
+        , shape=[ network_params['nb_units'] ]
+        , initializer=tf.zeros_initializer()
+    )
+    a2 = tf.nn.relu(tf.matmul(a1, W2) + b2)
+
+    W3 = tf.get_variable('W3'
+        , shape=[ network_params['nb_units'], network_params['nb_actions'] ]
+        , initializer=tf.random_normal_initializer(stddev=1e-2)
+    )
+    b3 = tf.get_variable('b3'
+        , shape=[ network_params['nb_actions'] ]
+        , initializer=tf.zeros_initializer()
+    )
+    logits = tf.matmul(a2, W3) + b3
+    probs_t = tf.nn.softmax(logits)
+
+    actions_t = tf.cast(tf.multinomial(logits, 1), tf.int32)
+        
+    return (probs_t, actions_t)
+
+
+def q_value(network_params, inputs):
+    W1 = tf.get_variable('W1'
+        , shape=[ network_params['nb_inputs'], network_params['nb_units'] ]
+        , initializer=tf.random_normal_initializer(stddev=1e-2)
+    )
+    b1 = tf.get_variable('b1'
+        , shape=[ network_params['nb_units'] ]
+        , initializer=tf.zeros_initializer()
+    )
+    a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
+    # a1 = tf.matmul(inputs, W1) + b1
+
+    W2 = tf.get_variable('W2'
+        , shape=[ network_params['nb_units'], network_params['nb_units'] ]
+        , initializer=tf.random_normal_initializer(stddev=1e-2)
+    )
+    b2 = tf.get_variable('b2'
+        , shape=[ network_params['nb_units'] ]
+        , initializer=tf.zeros_initializer()
+    )
+    a2 = tf.nn.relu(tf.matmul(a1, W2) + b2)
+    # a2 = tf.matmul(a1, W2) + b2
+
+    W3 = tf.get_variable('W3'
+        , shape=[ network_params['nb_units'], network_params['nb_actions'] ]
+        , initializer=tf.random_normal_initializer(stddev=1e-2)
+    )
+    b3 = tf.get_variable('b3'
+        , shape=[ network_params['nb_actions'] ]
+        , initializer=tf.zeros_initializer()
+    )
+    q_values = tf.matmul(a2, W3) + b3
+
+    return q_values

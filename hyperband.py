@@ -58,7 +58,7 @@ class Hyperband:
     
 
     # can be called multiple times
-    def run( self, skip_last = 0, dry_run = False ):
+    def run( self, main_config, skip_last = 0, dry_run = False ):
         for s in reversed( range( self.s_max + 1 )):
           
             # initial number of configurations
@@ -85,7 +85,7 @@ class Hyperband:
                 val_losses = []
                 early_stops = []
 
-                executor = concurrent.futures.ProcessPoolExecutor(int(min(multiprocessing.cpu_count(), 8) / 2))
+                executor = concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), main_config['hb_nb_child']))
                 futures = []
 
                 for t in T:
@@ -155,6 +155,7 @@ def make_get_params(config):
             'er_batch_size': get_er_batch_size(),
             'er_epoch_size': get_er_epoch_size(),
             'er_rm_size': get_er_rm_size(),
+            'discount': config['discount'],
             'debug': config['debug'],
             'agent_name': config['agent_name'],
             'env_name': config['env_name'],
@@ -174,6 +175,7 @@ def make_get_params(config):
             'er_batch_size': get_er_batch_size(),
             'er_epoch_size': get_er_epoch_size(),
             'er_rm_size': get_er_rm_size(),
+            'discount': config['discount'],
             'debug': config['debug'],
             'agent_name': config['agent_name'],
             'env_name': config['env_name'],

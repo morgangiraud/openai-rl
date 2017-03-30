@@ -3,6 +3,133 @@ import tensorflow as tf
 
 from agents import BasicAgent, capacities
 
+class DeepTDAgent(BasicAgent):
+    """
+    Agent implementing 2-layer NN Q-learning, using experience TD 0
+    """
+
+    def __init__(self, config, env):
+        super(DeepFixedQPlusAgent, self).__init__(config, env)
+
+        self.q_params = {
+            'nb_inputs': self.observation_space.shape[0] + 1
+            , 'nb_units': config['nb_units']
+            , 'nb_actions': self.action_space.n
+        }
+
+        self.N0 = config['N0']
+        self.min_eps = config['min_eps']
+
+        self.graph = self.buildGraph(tf.Graph())
+
+        gpu_options = tf.GPUOptions(allow_growth=True)
+        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
+        self.sess = tf.Session(config=sessConfig, graph=self.graph)
+        self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
+        self.init()
+
+
+    def buildGraph(self, graph):
+        with graph.as_default():
+            self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
+            self.N = tf.Variable(0., dtype=tf.float32, name='N', trainable=False)
+            self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
+
+            # Model
+            self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
+            
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.q_values = tf.squeeze(capacities.q_value(self.q_params, self.inputs))
+
+            self.action_t = capacities.epsGreedy(
+                self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
+            )
+            self.q_t = self.q_values[self.action_t]
+
+            with tf.variable_scope('Training'):
+                self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
+                self.next_state = tf.placeholder(tf.float32, shape=[1, self.observation_space.shape[0] + 1], name="nextState")
+                self.next_action = tf.placeholder(tf.float32, shape=[], name="nextAction")
+                with tf.variable_scope(q_scope, reuse=True):
+                    next_q_values = tf.squeeze(capacities.q_value(self.q_params, self.next_state))
+                target_q1 = tf.stop_gradient(self.reward + self.discount * next_q_values[self.next_action])
+                target_q2 = self.reward
+                is_done = tf.equal(self.next_state[0, 4], 1)
+                target_q = tf.cond(is_done, lambda: target_q2, lambda: target_q1)
+                with tf.control_dependencies([target_q]):
+                    self.loss = 1/2 * tf.square(target_q - self.q_t)
+
+                adam = tf.train.AdamOptimizer(self.lr)
+                self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                self.train_op = adam.minimize(self.loss, global_step=self.global_step)
+
+
+            self.score_plh = tf.placeholder(tf.float32, shape=[])
+            self.score_sum_t = tf.summary.scalar('score', self.score_plh)
+            self.loss_plh = tf.placeholder(tf.float32, shape=[])
+            self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
+            self.all_summary_t = tf.summary.merge_all()
+
+            self.episode_id = tf.Variable(0, trainable=False)
+            self.inc_ep_id_op = tf.assign(self.episode_id, self.episode_id + 1)
+
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
+
+            # Playing part
+            self.pscore_plh = tf.placeholder(tf.float32, shape=[])
+            self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
+
+        return graph
+
+    def act(self, obs):
+        state = [ np.concatenate((obs, [0])) ]
+        act = self.sess.run(self.action_t, feed_dict={
+            self.inputs: state
+        })
+
+        return (act, state)
+
+    def learnFromEpisode(self, env, render):
+        obs = env.reset()
+        act, _ = self.act(obs)
+
+        av_loss = []
+        score = 0
+        done = False
+        
+        while True:
+            if render:
+                env.render()
+
+            next_obs, reward, done, info = env.step(act)
+            next_act, _ = self.act(next_obs)
+
+            loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
+                self.inputs: [ np.concatenate((obs, [0])) ],
+                self.action_t: act,
+                self.reward: reward,
+                self.next_state: [ np.concatenate((next_obs, [1 if done else 0])) ],
+                self.next_action: next_act
+            })
+            av_loss.append(loss)
+            
+            score += reward
+            obs = next_obs
+            act = next_act
+            if done:
+                break
+
+        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={ 
+            self.score_plh: score,
+            self.loss_plh: np.mean(av_loss)
+        })
+        self.sw.add_summary(summary, episode_id)
+
+        return 
+
 class DeepFixedQPlusAgent(BasicAgent):
     """
     Agent implementing 2-layer NN Q-learning, using experience replay, fixed Q Network and TD(0).

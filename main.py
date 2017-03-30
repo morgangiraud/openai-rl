@@ -12,9 +12,10 @@ flags = tf.app.flags
 # Hyperband
 flags.DEFINE_boolean('hyperband', False, 'Perform a hyperband search of hyperparameters')
 flags.DEFINE_boolean('hb_dry_run', False, 'Perform a hyperband dry_run')
+flags.DEFINE_integer('hb_nb_child', 4, 'Number of paralelle process to perform a hyperband search')
 
 # Agent
-flags.DEFINE_string('agent_name', 'DeepQAgent', 'Name of the agent')
+flags.DEFINE_string('agent_name', 'DQNAgent', 'Name of the agent')
 flags.DEFINE_integer('max_iter', 2000, 'Number of training step')
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
 flags.DEFINE_float('nb_units', 20, 'Number of hidden units in Deep learning agents')
@@ -48,7 +49,7 @@ def main(_):
         get_params = make_get_params(config)
 
         hb = Hyperband( get_params, run_params )
-        results = hb.run(skip_last=True, dry_run=config['hb_dry_run'])
+        results = hb.run(config, skip_last=True, dry_run=config['hb_dry_run'])
         if not os.path.exists(config['result_dir_prefix']):
             os.makedirs(config['result_dir_prefix'])
         with open(config['result_dir_prefix'] + '/hb_results.json', 'w') as f:

@@ -9,7 +9,7 @@ def getExpectedRewards(episodeRewards):
         for j in range(i + 1):
             expected_reward[j] += episodeRewards[i]
 
-    return np.reshape(expected_reward, (len(expected_reward), 1))
+    return expected_reward
 
 class DeepMCPolicyAgent(BasicAgent):
     """
@@ -49,7 +49,7 @@ class DeepMCPolicyAgent(BasicAgent):
             self.action_t = tf.squeeze(self.actions, 1)[0]
 
             with tf.variable_scope('Training'):
-                self.rewards = tf.placeholder(tf.float32, shape=[None, 1], name="reward")
+                self.rewards = tf.placeholder(tf.float32, shape=[None], name="reward")
                 stacked_actions = tf.stack([tf.range(0, tf.shape(self.actions)[0]), tf.squeeze(self.actions, 1)], 1)
                 log_probs = tf.log(tf.gather_nd(self.probs, stacked_actions))
                 # log_probs = tf.Print(log_probs, data=[tf.shape(self.probs), tf.shape(self.actions), tf.shape(log_probs)], message="tf.shape(log_probs):")
@@ -123,6 +123,164 @@ class DeepMCPolicyAgent(BasicAgent):
 
         return
 
+
+class MCActorCriticAgent(BasicAgent):
+    """
+    Agent implementing Policy gradient using Monte-Carlo control
+    """
+
+    def __init__(self, config, env):
+        # Best conf:
+        super(MCActorCriticAgent, self).__init__(config, env)
+
+        self.policy_params = {
+            'nb_inputs': self.observation_space.shape[0] + 1
+            , 'nb_units': config['nb_units']
+            , 'nb_actions': self.action_space.n
+        }
+        self.q_params = {
+            'nb_inputs': self.observation_space.shape[0] + 1
+            , 'nb_units': config['nb_units']
+            , 'nb_actions': self.action_space.n
+        }
+        self.policy_lr = self.lr
+        self.q_lr = self.lr
+
+        self.graph = self.buildGraph(tf.Graph())
+
+        gpu_options = tf.GPUOptions(allow_growth=True)
+        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
+        self.sess = tf.Session(config=sessConfig, graph=self.graph)
+        self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
+        self.init()
+
+
+    def buildGraph(self, graph):
+        with graph.as_default():
+
+            # Model
+            self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
+
+            policy_scope = tf.VariableScope(reuse=False, name='Policy')
+            with tf.variable_scope(policy_scope):
+                self.probs, self.actions = capacities.policy(self.policy_params, self.inputs)
+            self.action_t = tf.squeeze(self.actions, 1)[0]
+
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.q_values = capacities.q_value(self.q_params, self.inputs)
+            self.q = self.q_values[0, tf.stop_gradient(self.action_t)]
+
+            with tf.variable_scope('Training'):
+                stacked_actions = tf.stack([tf.range(0, tf.shape(self.actions)[0]), tf.squeeze(self.actions, 1)], 1)
+                log_probs = tf.log(tf.gather_nd(self.probs, stacked_actions))
+                
+                qs = tf.gather_nd(self.q_values, stacked_actions)
+
+                self.policy_loss = - tf.reduce_sum(log_probs * tf.stop_gradient(qs))
+                policy_adam = tf.train.AdamOptimizer(self.policy_lr)
+                self.policy_global_step = tf.Variable(0, trainable=False, name="policy_global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                self.policy_train_op = policy_adam.minimize(self.policy_loss, global_step=self.policy_global_step)
+
+                self.rewards = tf.placeholder(tf.float32, shape=[None], name="rewards")
+                self.next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="next_states")
+                self.next_actions = tf.placeholder(tf.int32, shape=[None], name="next_actions")
+                with tf.variable_scope(q_scope, reuse=True):
+                    next_q_values = capacities.q_value(self.q_params, self.next_states)
+                next_stacked_actions = tf.stack([tf.range(0, tf.shape(self.next_actions)[0]), self.next_actions], 1)
+                next_qs = tf.gather_nd(next_q_values, next_stacked_actions)
+                target_qs1 = tf.stop_gradient(self.rewards + self.discount * next_qs)
+                target_qs2 = self.rewards
+                stacked_targets = tf.stack([target_qs1, target_qs2], 1)
+                select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, 4], tf.int32)], 1)
+                target_qs = tf.gather_nd(stacked_targets, select_targets)
+
+                self.q_loss = 1/2 * tf.reduce_sum(tf.square(target_qs - qs))
+                q_adam = tf.train.AdamOptimizer(self.q_lr)
+                self.q_global_step = tf.Variable(0, trainable=False, name="q_global_step")
+                self.q_train_op = q_adam.minimize(self.q_loss, global_step=self.q_global_step)
+
+            self.score_plh = tf.placeholder(tf.float32, shape=[])
+            self.score_sum_t = tf.summary.scalar('score', self.score_plh)
+            self.policy_loss_plh = tf.placeholder(tf.float32, shape=[])
+            self.policy_loss_sum_t = tf.summary.scalar('policy_loss', self.policy_loss_plh)
+            self.q_loss_plh = tf.placeholder(tf.float32, shape=[])
+            self.q_loss_sum_t = tf.summary.scalar('q_loss', self.q_loss_plh)
+            self.all_summary_t = tf.summary.merge_all()
+
+            self.episode_id, self.inc_ep_id_op = capacities.counter()
+
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
+
+            # Playing part
+            self.pscore_plh = tf.placeholder(tf.float32, shape=[])
+            self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
+
+        return graph
+
+    def act(self, obs):
+        state = [ np.concatenate((obs, [0])) ]
+        act = self.sess.run(self.action_t, feed_dict={
+            self.inputs: state
+        })
+
+        return (act, state)
+
+    def learnFromEpisode(self, env, render):
+        obs = env.reset()
+        act, _ = self.act(obs)
+
+        score = 0
+        historyType = np.dtype([
+            ('states', 'float32', (env.observation_space.shape[0] + 1,)), 
+            ('actions', 'int32', (1,)), 
+            ('rewards', 'float32'), 
+            ('next_states', 'float32', (env.observation_space.shape[0] + 1,)),
+            ('next_actions', 'int32'),
+        ])
+        history = np.array([], dtype=historyType)
+        done = False
+
+        while True:
+            if render:
+                env.render()
+
+            next_obs, reward, done, info = env.step(act)
+            next_act, _ = self.act(next_obs)
+
+            memory = np.array([(
+                np.concatenate((obs, [0])), 
+                [act], 
+                reward, 
+                np.concatenate((next_obs, [1 if done else 0])),
+                next_act
+            )], dtype=historyType)
+            history = np.append(history, memory)
+
+            score += reward
+            obs = next_obs
+            act = next_act
+            if done:
+                break
+
+        # Learning
+        _, policy_loss, _, q_loss = self.sess.run([self.policy_train_op, self.policy_loss , self.q_train_op, self.q_loss], feed_dict={
+            self.inputs: history['states'],
+            self.actions: history['actions'],
+            self.rewards: getExpectedRewards(history['rewards']),
+            self.next_states: history['next_states'],
+            self.next_actions: history['next_actions'],
+        })
+        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
+            self.score_plh: score,
+            self.policy_loss_plh: policy_loss,
+            self.q_loss_plh: q_loss,
+        })
+        self.sw.add_summary(summary, episode_id)
+
+        return
 
 class ActorCriticAgent(BasicAgent):
     """

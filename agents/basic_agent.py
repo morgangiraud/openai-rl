@@ -22,6 +22,7 @@ class BasicAgent(object):
         self.action_space = env.action_space
 
         self.lr = config['lr']
+        self.discount = config['discount']
 
         # Play part
         self.play_counter = 0

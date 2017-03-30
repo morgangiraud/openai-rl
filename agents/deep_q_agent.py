@@ -39,7 +39,6 @@ class DeepFixedQPlusAgent(BasicAgent):
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N = tf.Variable(0., dtype=tf.float32, name='N', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.discount = 1
             self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
             self.replayMemory = np.array([], dtype=self.replayMemoryDt)
             
@@ -188,7 +187,7 @@ class DQNAgent(BasicAgent):
     """
     Agent implementing The DQN (Experience replay abd fixed Q-Net).
     """
-    # Best: # Best: {'agent_name': 'DQNAgent', 'max_iter': 2000, 'lr': 0.001, 'nb_units': 50.0, 'N0': 100, 'min_eps': 0.01, 'er_every': 20, 'er_batch_size': 300, 'er_epoch_size': 50, 'er_rm_size': 20000, 'env_name': 'CartPole-v0'}
+    # Best: # Best: {'agent_name': 'DQNAgent', 'max_iter': 2000, 'lr': 0.001, 'nb_units': 50.0, 'discount': 0.99, 'N0': 100, 'min_eps': 0.01, 'er_every': 20, 'er_batch_size': 300, 'er_epoch_size': 50, 'er_rm_size': 20000, 'env_name': 'CartPole-v0'}
 
     def __init__(self, config, env):
         super(DQNAgent, self).__init__(config, env)
@@ -206,7 +205,10 @@ class DQNAgent(BasicAgent):
         self.er_batch_size = config['er_batch_size']
         self.er_epoch_size = config['er_epoch_size']
         self.er_rm_size = config['er_rm_size']
+        self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
+        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
+        
         self.graph = self.buildGraph(tf.Graph())
 
         gpu_options = tf.GPUOptions(allow_growth=True)
@@ -215,14 +217,14 @@ class DQNAgent(BasicAgent):
         self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
         self.init()
 
+    def get_best_config():
+        pass
+
     def buildGraph(self, graph):
         with graph.as_default():
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N = tf.Variable(0., dtype=tf.float32, name='N', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.discount = 1
-            self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
-            self.replayMemory = np.array([], dtype=self.replayMemoryDt)
             
             # Model
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')

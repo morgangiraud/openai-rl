@@ -1,7 +1,7 @@
 from agents.basic_agent import BasicAgent
 from agents.tabular_q_agent import TabularQAgent, TabularQERAgent, TabularFixedQERAgent, TabularQplusAgent, TabularFixedQplusAgent, BackwardTabularQAgent, BackwardTabularFixedQplusAgent
 from agents.deep_q_agent import DeepFixedQPlusAgent, DQNAgent
-from agents.deep_policy_agent import DeepMCPolicyAgent, ActorCriticAgent
+from agents.deep_policy_agent import DeepMCPolicyAgent, ActorCriticAgent, A2CAgent, TDACAgent
 
 __all__ = [
     "BasicAgent",
@@ -16,6 +16,8 @@ __all__ = [
     "DQNAgent",
     "DeepMCPolicyAgent",
     "ActorCriticAgent",
+    "A2CAgent",
+    "TDACAgent",
 ]
 
 def make_agent(config, env):
@@ -41,5 +43,9 @@ def make_agent(config, env):
         return DeepMCPolicyAgent(config, env)
     elif(config['agent_name'] == 'ActorCriticAgent'):
         return ActorCriticAgent(config, env)
+    elif(config['agent_name'] == 'A2CAgent'):
+        return A2CAgent(config, env)
+    elif(config['agent_name'] == 'TDACAgent'):
+        return TDACAgent(config, env)
     else:
         raise Exception('The agent name %s does not exist' % config['agent_name'])

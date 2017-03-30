@@ -18,6 +18,7 @@ flags.DEFINE_string('agent_name', 'DeepQAgent', 'Name of the agent')
 flags.DEFINE_integer('max_iter', 2000, 'Number of training step')
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
 flags.DEFINE_float('nb_units', 20, 'Number of hidden units in Deep learning agents')
+flags.DEFINE_float('discount', .99, 'Discount factor')
 
 # Policy
 flags.DEFINE_integer('N0', 100, 'Offset used in the decay algorithm of espilon')

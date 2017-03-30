@@ -13,7 +13,6 @@ class TabularQAgent(BasicAgent):
 
         self.N0 = config['N0']
         self.min_eps = config['min_eps']
-        self.discount = 1
 
         self.graph = self.buildGraph(tf.Graph())
 
@@ -118,7 +117,6 @@ class BackwardTabularQAgent(TabularQAgent):
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.discount = 1
 
             with tf.variable_scope('Qs'):
                 self.Qs = tf.Variable(
@@ -227,7 +225,6 @@ class TabularQplusAgent(TabularQAgent):
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.discount = 1
             self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
             self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
@@ -353,7 +350,6 @@ class TabularFixedQplusAgent(TabularQAgent):
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.discount = 1
             self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
             self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
@@ -488,7 +484,6 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.discount = 1
             self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
             self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
@@ -641,7 +636,6 @@ class TabularQERAgent(TabularQAgent):
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.discount = 1
             self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
             self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
@@ -752,7 +746,6 @@ class TabularFixedQERAgent(TabularQAgent):
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.discount = 1
             self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
             self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 

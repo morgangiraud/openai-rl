@@ -11,7 +11,11 @@ class DeepFixedQPlusAgent(BasicAgent):
     def __init__(self, config, env):
         super(DeepFixedQPlusAgent, self).__init__(config, env)
 
-        self.nb_units = config['nb_units']
+        self.q_params = {
+            'nb_inputs': self.observation_space.shape[0] + 1
+            , 'nb_units': config['nb_units']
+            , 'nb_actions': self.action_space.n
+        }
 
         self.N0 = config['N0']
         self.min_eps = config['min_eps']
@@ -29,48 +33,6 @@ class DeepFixedQPlusAgent(BasicAgent):
         self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
         self.init()
 
-    def net(self, inputs, net_scope, scope_reuse=False):
-        with tf.variable_scope(net_scope) as scope:
-            if scope_reuse:
-                scope.reuse_variables()
-
-            W1 = tf.get_variable('W1'
-                , shape=[self.observation_space.shape[0] + 1, self.nb_units]
-                , initializer=tf.random_normal_initializer(stddev=1e-2)
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            b1 = tf.get_variable('b1'
-                , shape=[self.nb_units]
-                , initializer=tf.zeros_initializer()
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
-
-            W2 = tf.get_variable('W2'
-                , shape=[self.nb_units, self.nb_units]
-                , initializer=tf.random_normal_initializer(stddev=1e-2)
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            b2 = tf.get_variable('b2'
-                , shape=[self.nb_units]
-                , initializer=tf.zeros_initializer()
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            a2 = tf.nn.relu(tf.matmul(a1, W2) + b2)
-
-            W3 = tf.get_variable('W3'
-                , shape=[self.nb_units, self.action_space.n]
-                , initializer=tf.random_normal_initializer(stddev=1e-2)
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            b3 = tf.get_variable('b3'
-                , shape=[self.action_space.n]
-                , initializer=tf.zeros_initializer()
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            out = tf.matmul(a2, W3) + b3
-
-        return out
 
     def buildGraph(self, graph):
         with graph.as_default():
@@ -82,19 +44,21 @@ class DeepFixedQPlusAgent(BasicAgent):
             self.replayMemory = np.array([], dtype=self.replayMemoryDt)
             
             # Model
-            net_scope = tf.VariableScope(reuse=False, name='Net')
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
-            self.q_preds = tf.squeeze(self.net(self.inputs, net_scope, False))
+            
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.q_values = tf.squeeze(capacities.q_value(self.q_params, self.inputs))
 
             self.action_t = capacities.epsGreedy(
-                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps
+                self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
             )
-            self.q_t = self.q_preds[self.action_t]
+            self.q_t = self.q_values[self.action_t]
 
-            fixed_net_scope = tf.VariableScope(reuse=False, name='FixedNet')
-            with tf.variable_scope(fixed_net_scope):
+            fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
+            with tf.variable_scope(fixed_q_scope):
                 self.update_fixed_vars_op = []
-                for var in tf.get_collection("net"):
+                for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=q_scope.name):
                     fixed = tf.get_variable(var.name.split("/")[-1].split(":")[0], shape=var.get_shape())    
                     assign_op = tf.assign(fixed, var)
                     self.update_fixed_vars_op.append(assign_op)
@@ -102,9 +66,10 @@ class DeepFixedQPlusAgent(BasicAgent):
             with tf.variable_scope('Training'):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
                 self.next_state = tf.placeholder(tf.float32, shape=[1, self.observation_space.shape[0] + 1], name="nextState")
-                next_q_preds_t = tf.squeeze(self.net(self.next_state, net_scope, True))
-                next_max_action_t = tf.cast(tf.argmax(next_q_preds_t, 0), tf.int32)
-                target_q1 = tf.stop_gradient(self.reward + self.discount * next_q_preds_t[next_max_action_t])
+                with tf.variable_scope(q_scope, reuse=True):
+                    next_q_values = tf.squeeze(capacities.q_value(self.q_params, self.next_state))
+                next_max_action_t = tf.cast(tf.argmax(next_q_values, 0), tf.int32)
+                target_q1 = tf.stop_gradient(self.reward + self.discount * next_q_values[next_max_action_t])
                 target_q2 = self.reward
                 is_done = tf.equal(self.next_state[0, 4], 1)
                 target_q = tf.cond(is_done, lambda: target_q2, lambda: target_q1)
@@ -121,23 +86,22 @@ class DeepFixedQPlusAgent(BasicAgent):
                 self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
                 self.er_next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERNextState")
 
-                er_qs_preds = self.net(self.er_inputs, net_scope, True)
-                er_sa_pairs = tf.stack([tf.range(0, tf.shape(self.er_actions)[0]), self.er_actions], 1)
-                er_qs = tf.gather_nd(er_qs_preds, er_sa_pairs)
+                with tf.variable_scope(q_scope, reuse=True):
+                    er_q_values = capacities.q_value(self.q_params, self.er_inputs)
+                er_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_actions)[0]), self.er_actions], 1)
+                er_qs = tf.gather_nd(er_q_values, er_stacked_actions)
 
-                er_next_qs_preds = self.net(self.er_next_states, fixed_net_scope, True)
-                er_next_max_action_t = tf.cast(tf.argmax(er_next_qs_preds, 1), tf.int32)
-                er_next_sa_pairs = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), er_next_max_action_t], 1)
-                er_next_qs = tf.gather_nd(er_next_qs_preds, er_next_sa_pairs)
+                with tf.variable_scope(fixed_q_scope, reuse=True):
+                    er_next_q_values = capacities.q_value(self.q_params, self.er_next_states)
+                er_next_max_action_t = tf.cast(tf.argmax(er_next_q_values, 1), tf.int32)
+                er_next_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), er_next_max_action_t], 1)
+                er_next_qs = tf.gather_nd(er_next_q_values, er_next_stacked_actions)
 
                 er_target_qs1 = tf.stop_gradient(self.er_rewards + self.discount * er_next_qs)
                 er_target_qs2 = self.er_rewards
-                scan_res = tf.scan(
-                    lambda indice, next_state: (indice[0] + 1, tf.cond(tf.equal(next_state[4], 1), lambda: er_target_qs2[indice[0]], lambda: er_target_qs1[indice[0]]))
-                    , self.er_next_states
-                    , initializer=(tf.constant(0, tf.int32), tf.constant(0., tf.float32))
-                )
-                er_target_qs = scan_res[1]
+                er_stacked_targets = tf.stack([er_target_qs1, er_target_qs2], 1)
+                select_targets = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), tf.cast(self.er_next_states[:, 4], tf.int32)], 1)
+                er_target_qs = tf.gather_nd(er_stacked_targets, select_targets)
                 er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
                 er_adam = tf.train.AdamOptimizer(self.lr)
                 self.er_train_op = er_adam.minimize(er_loss)
@@ -224,11 +188,16 @@ class DQNAgent(BasicAgent):
     """
     Agent implementing The DQN (Experience replay abd fixed Q-Net).
     """
+    # Best: # Best: {'agent_name': 'DQNAgent', 'max_iter': 2000, 'lr': 0.001, 'nb_units': 50.0, 'N0': 100, 'min_eps': 0.01, 'er_every': 20, 'er_batch_size': 300, 'er_epoch_size': 50, 'er_rm_size': 20000, 'env_name': 'CartPole-v0'}
 
     def __init__(self, config, env):
         super(DQNAgent, self).__init__(config, env)
 
-        self.nb_units = config['nb_units']
+        self.q_params = {
+            'nb_inputs': self.observation_space.shape[0] + 1
+            , 'nb_units': config['nb_units']
+            , 'nb_actions': self.action_space.n
+        }
 
         self.N0 = config['N0']
         self.min_eps = config['min_eps']
@@ -246,46 +215,6 @@ class DQNAgent(BasicAgent):
         self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
         self.init()
 
-    def net(self, inputs, scope, scope_reuse=False):
-        with tf.variable_scope(scope, reuse=scope_reuse):
-            W1 = tf.get_variable('W1'
-                , shape=[self.observation_space.shape[0] + 1, self.nb_units]
-                , initializer=tf.random_normal_initializer(stddev=1e-2)
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            b1 = tf.get_variable('b1'
-                , shape=[self.nb_units]
-                , initializer=tf.zeros_initializer()
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
-
-            W2 = tf.get_variable('W2'
-                , shape=[self.nb_units, self.nb_units]
-                , initializer=tf.random_normal_initializer(stddev=1e-2)
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            b2 = tf.get_variable('b2'
-                , shape=[self.nb_units]
-                , initializer=tf.zeros_initializer()
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            a2 = tf.nn.relu(tf.matmul(a1, W2) + b2)
-
-            W3 = tf.get_variable('W3'
-                , shape=[self.nb_units, self.action_space.n]
-                , initializer=tf.random_normal_initializer(stddev=1e-2)
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            b3 = tf.get_variable('b3'
-                , shape=[self.action_space.n]
-                , initializer=tf.zeros_initializer()
-                , collections=[tf.GraphKeys.GLOBAL_VARIABLES, "net"]
-            )
-            out = tf.matmul(a2, W3) + b3
-
-        return out
-
     def buildGraph(self, graph):
         with graph.as_default():
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
@@ -296,19 +225,21 @@ class DQNAgent(BasicAgent):
             self.replayMemory = np.array([], dtype=self.replayMemoryDt)
             
             # Model
-            net_scope = tf.VariableScope(reuse=False, name='Net')
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
-            self.q_preds = tf.squeeze(self.net(self.inputs, net_scope, False))
+
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.q_values = tf.squeeze(capacities.q_value(self.q_params, self.inputs))
 
             self.action_t = capacities.epsGreedy(
-                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps
+                self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
             )
-            self.q_t = self.q_preds[self.action_t]
+            self.q_t = self.q_values[self.action_t]
 
-            fixed_net_scope = tf.VariableScope(reuse=False, name='FixedNet')
-            with tf.variable_scope(fixed_net_scope):
+            fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
+            with tf.variable_scope(fixed_q_scope):
                 self.update_fixed_vars_op = []
-                for var in tf.get_collection("net"):
+                for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=q_scope.name):
                     fixed = tf.get_variable(var.name.split("/")[-1].split(":")[0], shape=var.get_shape())    
                     assign_op = tf.assign(fixed, var)
                     self.update_fixed_vars_op.append(assign_op)
@@ -319,23 +250,23 @@ class DQNAgent(BasicAgent):
                 self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
                 self.er_next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERNextState")
 
-                er_qs_preds = self.net(self.er_inputs, net_scope, True)
-                er_sa_pairs = tf.stack([tf.range(0, tf.shape(self.er_actions)[0]), self.er_actions], 1)
-                er_qs = tf.gather_nd(er_qs_preds, er_sa_pairs)
+                with tf.variable_scope(q_scope, reuse=True):
+                    er_q_values = capacities.q_value(self.q_params, self.er_inputs)
+                er_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_actions)[0]), self.er_actions], 1)
+                er_qs = tf.gather_nd(er_q_values, er_stacked_actions)
 
-                er_next_qs_preds = self.net(self.er_next_states, fixed_net_scope, True)
-                er_next_max_action_t = tf.cast(tf.argmax(er_next_qs_preds, 1), tf.int32)
-                er_next_sa_pairs = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), er_next_max_action_t], 1)
-                er_next_qs = tf.gather_nd(er_next_qs_preds, er_next_sa_pairs)
+                with tf.variable_scope(fixed_q_scope, reuse=True):
+                    er_next_q_values = capacities.q_value(self.q_params, self.er_next_states)
+                er_next_max_action_t = tf.cast(tf.argmax(er_next_q_values, 1), tf.int32)
+                er_next_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), er_next_max_action_t], 1)
+                er_next_qs = tf.gather_nd(er_next_q_values, er_next_stacked_actions)
 
                 er_target_qs1 = tf.stop_gradient(self.er_rewards + self.discount * er_next_qs)
                 er_target_qs2 = self.er_rewards
-                scan_res = tf.scan(
-                    lambda indice, next_state: (indice[0] + 1, tf.cond(tf.equal(next_state[4], 1), lambda: er_target_qs2[indice[0]], lambda: er_target_qs1[indice[0]]))
-                    , self.er_next_states
-                    , initializer=(tf.constant(0, tf.int32), tf.constant(0., tf.float32))
-                )
-                er_target_qs = scan_res[1]
+                er_stacked_targets = tf.stack([er_target_qs1, er_target_qs2], 1)
+                select_targets = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), tf.cast(self.er_next_states[:, 4], tf.int32)], 1)
+                er_target_qs = tf.gather_nd(er_stacked_targets, select_targets)
+                
                 self.er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
                 er_adam = tf.train.AdamOptimizer(self.lr)
                 self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])

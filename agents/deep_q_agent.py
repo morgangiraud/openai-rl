@@ -9,12 +9,12 @@ class DeepTDAgent(BasicAgent):
     """
 
     def __init__(self, config, env):
-        super(DeepFixedQPlusAgent, self).__init__(config, env)
+        super(DeepTDAgent, self).__init__(config, env)
 
         self.q_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
 
         self.N0 = config['N0']
@@ -40,7 +40,7 @@ class DeepTDAgent(BasicAgent):
             
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
-                self.q_values = tf.squeeze(capacities.q_value(self.q_params, self.inputs))
+                self.q_values = tf.squeeze(capacities.value_f(self.q_params, self.inputs))
 
             self.action_t = capacities.epsGreedy(
                 self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
@@ -50,9 +50,9 @@ class DeepTDAgent(BasicAgent):
             with tf.variable_scope('Training'):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
                 self.next_state = tf.placeholder(tf.float32, shape=[1, self.observation_space.shape[0] + 1], name="nextState")
-                self.next_action = tf.placeholder(tf.float32, shape=[], name="nextAction")
+                self.next_action = tf.placeholder(tf.int32, shape=[], name="nextAction")
                 with tf.variable_scope(q_scope, reuse=True):
-                    next_q_values = tf.squeeze(capacities.q_value(self.q_params, self.next_state))
+                    next_q_values = tf.squeeze(capacities.value_f(self.q_params, self.next_state))
                 target_q1 = tf.stop_gradient(self.reward + self.discount * next_q_values[self.next_action])
                 target_q2 = self.reward
                 is_done = tf.equal(self.next_state[0, 4], 1)
@@ -71,8 +71,7 @@ class DeepTDAgent(BasicAgent):
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id = tf.Variable(0, trainable=False)
-            self.inc_ep_id_op = tf.assign(self.episode_id, self.episode_id + 1)
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -141,7 +140,7 @@ class DeepFixedQPlusAgent(BasicAgent):
         self.q_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
 
         self.N0 = config['N0']
@@ -174,7 +173,7 @@ class DeepFixedQPlusAgent(BasicAgent):
             
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
-                self.q_values = tf.squeeze(capacities.q_value(self.q_params, self.inputs))
+                self.q_values = tf.squeeze(capacities.value_f(self.q_params, self.inputs))
 
             self.action_t = capacities.epsGreedy(
                 self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
@@ -193,7 +192,7 @@ class DeepFixedQPlusAgent(BasicAgent):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
                 self.next_state = tf.placeholder(tf.float32, shape=[1, self.observation_space.shape[0] + 1], name="nextState")
                 with tf.variable_scope(q_scope, reuse=True):
-                    next_q_values = tf.squeeze(capacities.q_value(self.q_params, self.next_state))
+                    next_q_values = tf.squeeze(capacities.value_f(self.q_params, self.next_state))
                 next_max_action_t = tf.cast(tf.argmax(next_q_values, 0), tf.int32)
                 target_q1 = tf.stop_gradient(self.reward + self.discount * next_q_values[next_max_action_t])
                 target_q2 = self.reward
@@ -213,12 +212,12 @@ class DeepFixedQPlusAgent(BasicAgent):
                 self.er_next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERNextState")
 
                 with tf.variable_scope(q_scope, reuse=True):
-                    er_q_values = capacities.q_value(self.q_params, self.er_inputs)
+                    er_q_values = capacities.value_f(self.q_params, self.er_inputs)
                 er_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_actions)[0]), self.er_actions], 1)
                 er_qs = tf.gather_nd(er_q_values, er_stacked_actions)
 
                 with tf.variable_scope(fixed_q_scope, reuse=True):
-                    er_next_q_values = capacities.q_value(self.q_params, self.er_next_states)
+                    er_next_q_values = capacities.value_f(self.q_params, self.er_next_states)
                 er_next_max_action_t = tf.cast(tf.argmax(er_next_q_values, 1), tf.int32)
                 er_next_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), er_next_max_action_t], 1)
                 er_next_qs = tf.gather_nd(er_next_q_values, er_next_stacked_actions)
@@ -238,8 +237,7 @@ class DeepFixedQPlusAgent(BasicAgent):
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id = tf.Variable(0, trainable=False)
-            self.inc_ep_id_op = tf.assign(self.episode_id, self.episode_id + 1)
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -322,7 +320,7 @@ class DQNAgent(BasicAgent):
         self.q_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
 
         self.N0 = config['N0']
@@ -358,7 +356,7 @@ class DQNAgent(BasicAgent):
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
-                self.q_values = tf.squeeze(capacities.q_value(self.q_params, self.inputs))
+                self.q_values = tf.squeeze(capacities.value_f(self.q_params, self.inputs))
 
             self.action_t = capacities.epsGreedy(
                 self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
@@ -380,12 +378,12 @@ class DQNAgent(BasicAgent):
                 self.er_next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERNextState")
 
                 with tf.variable_scope(q_scope, reuse=True):
-                    er_q_values = capacities.q_value(self.q_params, self.er_inputs)
+                    er_q_values = capacities.value_f(self.q_params, self.er_inputs)
                 er_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_actions)[0]), self.er_actions], 1)
                 er_qs = tf.gather_nd(er_q_values, er_stacked_actions)
 
                 with tf.variable_scope(fixed_q_scope, reuse=True):
-                    er_next_q_values = capacities.q_value(self.q_params, self.er_next_states)
+                    er_next_q_values = capacities.value_f(self.q_params, self.er_next_states)
                 er_next_max_action_t = tf.cast(tf.argmax(er_next_q_values, 1), tf.int32)
                 er_next_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), er_next_max_action_t], 1)
                 er_next_qs = tf.gather_nd(er_next_q_values, er_next_stacked_actions)
@@ -407,8 +405,8 @@ class DQNAgent(BasicAgent):
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
-            self.event_count, self.inc_event_count_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+            self.timestep, self.inc_timestep_op = capacities.counter("timestep")
 
             self.saver = tf.train.Saver()
 
@@ -448,13 +446,13 @@ class DQNAgent(BasicAgent):
             self.replayMemory = np.append(self.replayMemory, memory)  
 
             memories = np.random.choice(self.replayMemory, self.er_batch_size)
-            loss, _, event_count, _ = self.sess.run([self.er_loss, self.inc_event_count_op, self.event_count, self.er_train_op], feed_dict={
+            loss, _, timestep, _ = self.sess.run([self.er_loss, self.inc_timestep_op, self.timestep, self.er_train_op], feed_dict={
                 self.er_inputs: memories['states'],
                 self.er_actions: memories['actions'],
                 self.er_rewards: memories['rewards'],
                 self.er_next_states: memories['next_states'],
             })
-            if event_count % self.er_every == 0:
+            if timestep % self.er_every == 0:
                 self.sess.run(self.update_fixed_vars_op)
 
             av_loss.append(loss)
@@ -494,7 +492,7 @@ class DDQNAgent(DQNAgent):
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
-                self.q_values = tf.squeeze(capacities.q_value(self.q_params, self.inputs))
+                self.q_values = tf.squeeze(capacities.value_f(self.q_params, self.inputs))
 
             self.action_t = capacities.epsGreedy(
                 self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
@@ -516,14 +514,14 @@ class DDQNAgent(DQNAgent):
                 self.er_next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERNextState")
 
                 with tf.variable_scope(q_scope, reuse=True):
-                    er_q_values = capacities.q_value(self.q_params, self.er_inputs)
+                    er_q_values = capacities.value_f(self.q_params, self.er_inputs)
                 er_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_actions)[0]), self.er_actions], 1)
                 er_qs = tf.gather_nd(er_q_values, er_stacked_actions)
 
                 with tf.variable_scope(fixed_q_scope, reuse=True):
-                    er_fixed_next_q_values = capacities.q_value(self.q_params, self.er_next_states)
+                    er_fixed_next_q_values = capacities.value_f(self.q_params, self.er_next_states)
                 with tf.variable_scope(q_scope, reuse=True):
-                    er_next_q_values = capacities.q_value(self.q_params, self.er_next_states)
+                    er_next_q_values = capacities.value_f(self.q_params, self.er_next_states)
                 er_next_max_action_t = tf.cast(tf.argmax(er_next_q_values, 1), tf.int32)
                 er_next_stacked_actions = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), er_next_max_action_t], 1)
                 er_next_qs = tf.gather_nd(er_fixed_next_q_values, er_next_stacked_actions)
@@ -545,8 +543,8 @@ class DDQNAgent(DQNAgent):
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
-            self.event_count, self.inc_event_count_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+            self.timestep, self.inc_timestep_op = capacities.counter("timestep")
 
             self.saver = tf.train.Saver()
 

@@ -12,7 +12,7 @@ class TestCapacities(unittest.TestCase):
         rewards = [1, 1, 2]
         expected_rewards = getExpectedRewards(rewards)
 
-        self.assertEqual(np.array_equal(expected_rewards, [[4], [3], [2]]), True)
+        self.assertEqual(np.array_equal(expected_rewards, [4, 3, 2]), True)
 
 
 if __name__ == "__main__":

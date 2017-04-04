@@ -16,10 +16,12 @@ flags.DEFINE_integer('hb_nb_child', 4, 'Number of paralelle process to perform a
 
 # Agent
 flags.DEFINE_string('agent_name', 'DQNAgent', 'Name of the agent')
-flags.DEFINE_integer('max_iter', 2000, 'Number of training step')
+flags.DEFINE_boolean('best', False, 'Use the best known configuration')
+flags.DEFINE_float('initial_q_value', 0., 'Initial Q values in the Tabular case')
+flags.DEFINE_float('lambda', .9, 'Lambda parameters used with eligibility traces')
+flags.DEFINE_float('discount', .99, 'Discount factor')
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
 flags.DEFINE_float('nb_units', 20, 'Number of hidden units in Deep learning agents')
-flags.DEFINE_float('discount', .99, 'Discount factor')
 
 # Policy
 flags.DEFINE_integer('N0', 100, 'Offset used in the decay algorithm of espilon')
@@ -34,6 +36,7 @@ flags.DEFINE_integer('er_rm_size', 20000, 'Size of the replay memory buffer')
 # Environment
 flags.DEFINE_string('env_name', 'CartPole-v0', 'The name of gym environment to use')
 flags.DEFINE_boolean('debug', False, 'Debug mode')
+flags.DEFINE_integer('max_iter', 2000, 'Number of training step')
 
 flags.DEFINE_string('result_dir', dir + '/results/' + flags.FLAGS.env_name + '/' + flags.FLAGS.agent_name + '/' + str(int(time.time())), 'Name of the directory to store/log the agent (if it exists, the agent will be loaded from it)')
 
@@ -59,10 +62,10 @@ def main(_):
         #     print('Warning: loading config from file: %s' % (config['result_dir'] + '/config.json'))
         #     with open(config['result_dir'] + '/config.json', 'r') as f:
         #         config = json.load(f)
-        print(config)
 
         env = gym.make(config['env_name'])
         agent = make_agent(config, env)
+        print(agent.config)
 
         if config['play']:
             for i in range(config['play_nb']):

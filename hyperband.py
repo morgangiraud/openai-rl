@@ -189,7 +189,7 @@ def make_get_params(config):
 
 
 def run_params(nb_epoch, config):
-    config['max_iter'] = 1#int(nb_epoch) * 100
+    config['max_iter'] = int(nb_epoch) * 100
     config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/run-' + str(config['run'])
 
     # If we are reusing a configuration, we remove its folder before next training

@@ -4,6 +4,8 @@ from gym.spaces import Discrete, Box
 
 class BasicAgent(object):
     def __init__(self, config, env):
+        if config['best']:
+            config.update(self.get_best_config())
         self.config = config
 
         self.result_dir = config['result_dir']
@@ -26,6 +28,9 @@ class BasicAgent(object):
 
         # Play part
         self.play_counter = 0
+
+    def get_best_config(self):
+        return {}
 
     def act(self, obs, eps=None):
         pass

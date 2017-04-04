@@ -25,7 +25,7 @@ class DeepMCPolicyAgent(BasicAgent):
         self.policy_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
 
         self.graph = self.buildGraph(tf.Graph())
@@ -65,7 +65,7 @@ class DeepMCPolicyAgent(BasicAgent):
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -136,12 +136,12 @@ class MCActorCriticAgent(BasicAgent):
         self.policy_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
         self.q_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
         self.policy_lr = self.lr
         self.q_lr = self.lr
@@ -168,7 +168,7 @@ class MCActorCriticAgent(BasicAgent):
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
-                self.q_values = capacities.q_value(self.q_params, self.inputs)
+                self.q_values = capacities.value_f(self.q_params, self.inputs)
             self.q = self.q_values[0, tf.stop_gradient(self.action_t)]
 
             with tf.variable_scope('Training'):
@@ -186,7 +186,7 @@ class MCActorCriticAgent(BasicAgent):
                 self.next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="next_states")
                 self.next_actions = tf.placeholder(tf.int32, shape=[None], name="next_actions")
                 with tf.variable_scope(q_scope, reuse=True):
-                    next_q_values = capacities.q_value(self.q_params, self.next_states)
+                    next_q_values = capacities.value_f(self.q_params, self.next_states)
                 next_stacked_actions = tf.stack([tf.range(0, tf.shape(self.next_actions)[0]), self.next_actions], 1)
                 next_qs = tf.gather_nd(next_q_values, next_stacked_actions)
                 target_qs1 = tf.stop_gradient(self.rewards + self.discount * next_qs)
@@ -208,7 +208,7 @@ class MCActorCriticAgent(BasicAgent):
             self.q_loss_sum_t = tf.summary.scalar('q_loss', self.q_loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -294,12 +294,12 @@ class ActorCriticAgent(BasicAgent):
         self.policy_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
         self.q_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
         self.policy_lr = self.lr
         self.q_lr = self.lr
@@ -325,7 +325,7 @@ class ActorCriticAgent(BasicAgent):
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
-                self.q_values = capacities.q_value(self.q_params, self.inputs)
+                self.q_values = capacities.value_f(self.q_params, self.inputs)
             self.q = self.q_values[0, tf.stop_gradient(self.action_t)]
 
             with tf.control_dependencies([self.probs, self.q]):
@@ -343,7 +343,7 @@ class ActorCriticAgent(BasicAgent):
                     self.next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="next_states")
                     self.next_actions = tf.placeholder(tf.int32, shape=[None], name="next_actions")
                     with tf.variable_scope(q_scope, reuse=True):
-                        next_q_values = capacities.q_value(self.q_params, self.next_states)
+                        next_q_values = capacities.value_f(self.q_params, self.next_states)
                     next_stacked_actions = tf.stack([tf.range(0, tf.shape(self.next_actions)[0]), self.next_actions], 1)
                     next_qs = tf.gather_nd(next_q_values, next_stacked_actions)
                     target_qs1 = tf.stop_gradient(self.rewards + self.discount * next_qs)
@@ -365,7 +365,7 @@ class ActorCriticAgent(BasicAgent):
             self.q_loss_sum_t = tf.summary.scalar('q_loss', self.q_loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -440,17 +440,17 @@ class A2CAgent(ActorCriticAgent):
         self.policy_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
         self.q_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
         self.v_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': 1
+            , 'nb_outputs': 1
         }
         self.policy_lr = self.lr
         self.q_lr = self.lr
@@ -477,11 +477,11 @@ class A2CAgent(ActorCriticAgent):
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
-                self.q_values = capacities.q_value(self.q_params, self.inputs)
+                self.q_values = capacities.value_f(self.q_params, self.inputs)
 
             v_scope = tf.VariableScope(reuse=False, name='VValues')
             with tf.variable_scope(v_scope):
-                vs = capacities.q_value(self.v_params, self.inputs)
+                vs = capacities.value_f(self.v_params, self.inputs)
 
             with tf.control_dependencies([self.probs, self.q_values, vs]):
                 with tf.variable_scope('Training'):
@@ -493,7 +493,7 @@ class A2CAgent(ActorCriticAgent):
                     self.next_actions = tf.placeholder(tf.int32, shape=[None], name="next_actions")
 
                     with tf.variable_scope(v_scope, reuse=True):
-                        next_vs = tf.squeeze(capacities.q_value(self.v_params, self.next_states), 1)
+                        next_vs = tf.squeeze(capacities.value_f(self.v_params, self.next_states), 1)
 
                     with tf.variable_scope('TargetVs'):
                         target_vs1 = tf.stop_gradient(self.rewards + self.discount * next_vs)
@@ -503,7 +503,7 @@ class A2CAgent(ActorCriticAgent):
                         target_vs = tf.gather_nd(stacked_targets, select_targets)
 
                     with tf.variable_scope(q_scope, reuse=True):
-                        next_q_values = capacities.q_value(self.q_params, self.next_states)
+                        next_q_values = capacities.value_f(self.q_params, self.next_states)
 
                     with tf.variable_scope('TargetQs'):
                         next_stacked_actions = tf.stack([tf.range(0, tf.shape(self.next_actions)[0]), self.next_actions], 1)
@@ -543,7 +543,7 @@ class A2CAgent(ActorCriticAgent):
             self.v_loss_sum_t = tf.summary.scalar('v_loss', self.v_loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -612,12 +612,12 @@ class TDACAgent(ActorCriticAgent):
         self.policy_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': self.action_space.n
+            , 'nb_outputs': self.action_space.n
         }
         self.v_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': config['nb_units']
-            , 'nb_actions': 1
+            , 'nb_outputs': 1
         }
         
         self.policy_lr = self.lr
@@ -645,7 +645,7 @@ class TDACAgent(ActorCriticAgent):
 
             v_scope = tf.VariableScope(reuse=False, name='VValues')
             with tf.variable_scope(v_scope):
-                vs = capacities.q_value(self.v_params, self.inputs)
+                vs = capacities.value_f(self.v_params, self.inputs)
 
             with tf.control_dependencies([self.probs, vs]):
                 with tf.variable_scope('Training'):
@@ -656,7 +656,7 @@ class TDACAgent(ActorCriticAgent):
                     self.next_actions = tf.placeholder(tf.int32, shape=[None], name="next_actions")
 
                     with tf.variable_scope(v_scope, reuse=True):
-                        next_vs = tf.squeeze(capacities.q_value(self.v_params, self.next_states), 1)
+                        next_vs = tf.squeeze(capacities.value_f(self.v_params, self.next_states), 1)
 
                     with tf.variable_scope('TargetVs'):
                         target_vs1 = tf.stop_gradient(self.rewards + self.discount * next_vs)
@@ -687,7 +687,7 @@ class TDACAgent(ActorCriticAgent):
             self.v_loss_sum_t = tf.summary.scalar('v_loss', self.v_loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 

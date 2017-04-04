@@ -47,7 +47,6 @@ class TestCapacities(unittest.TestCase):
             inputs = tf.placeholder(tf.float32, shape=[None, 3])
             probs_t, actions_t = capacities.policy(policy_params, inputs)
             
-
             with tf.Session() as sess:
                 sess.run(tf.global_variables_initializer())
                 
@@ -56,6 +55,27 @@ class TestCapacities(unittest.TestCase):
                 })
                 self.assertEqual(np.array_equal(np.round(probs, 1), [[ 0.5 , 0.5]]), True)
                 self.assertEqual(np.array_equal(actions, [[0]]), True)
+
+    def test_eligibilityTraces(self):
+        with tf.Graph().as_default():
+            inputs = tf.placeholder(tf.int32, shape=[])
+            action_t = tf.placeholder(tf.int32, shape=[])
+            shape = [3, 2]
+            discount = .9
+            lambda_value = .9
+
+            et, update_et_op, reset_et_op = capacities.eligibilityTraces(inputs, action_t, shape, discount, lambda_value)
+            
+            with tf.Session() as sess:
+                sess.run(tf.global_variables_initializer())
+                
+                _ = sess.run([update_et_op], feed_dict={
+                    inputs: 0,
+                    action_t: 1
+                })
+                self.assertEqual(np.array_equal(sess.run(et), [[ 0. , 1.], [ 0. , 0.], [ 0. , 0.]]), True)
+                _ = sess.run([reset_et_op])
+                self.assertEqual(np.array_equal(sess.run(et), [[ 0. , 0.], [ 0. , 0.], [ 0. , 0.]]), True)
 
 
 if __name__ == "__main__":

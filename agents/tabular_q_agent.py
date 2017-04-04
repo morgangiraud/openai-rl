@@ -11,8 +11,9 @@ class TabularQAgent(BasicAgent):
         config.update(phis.getPhiConfig(config['env_name'], config['debug']))
         super(TabularQAgent, self).__init__(config, env)
 
-        self.N0 = config['N0']
-        self.min_eps = config['min_eps']
+        self.N0 = self.config['N0']
+        self.min_eps = self.config['min_eps']
+        self.initial_q_value = self.config['initial_q_value']
 
         self.graph = self.buildGraph(tf.Graph())
 
@@ -23,15 +24,26 @@ class TabularQAgent(BasicAgent):
         self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
         self.init()
 
+    def get_best_config(self):
+        return {
+            'lr': 0.1
+            , 'discount': 0.99
+            , 'N0': 100
+            , 'min_eps': 0.01
+            , 'initial_q_value': 0
+        }
+
     def buildGraph(self, graph):
         with graph.as_default():
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+
             with tf.variable_scope('Qs'):
-                self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
                 self.Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
+                    initial_value=self.initial_q_value * np.ones([self.nb_state, self.action_space.n])
                     , name = "Qs"
                     , dtype=tf.float32
                 )
+                tf.summary.histogram('Qarray', self.Qs)
                 self.q_preds = self.Qs[self.inputs]
 
             self.action_t = capacities.epsGreedy(
@@ -47,11 +59,9 @@ class TabularQAgent(BasicAgent):
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)
             self.loss_plh = tf.placeholder(tf.float32, shape=[])
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
-            self.qs_plh = tf.placeholder(tf.float32, shape=[self.nb_state, self.action_space.n])
-            self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -85,7 +95,7 @@ class TabularQAgent(BasicAgent):
             next_obs, reward, done, info = env.step(act)
 
             next_state_id = self.phi(next_obs, done)
-            loss, qs, _ = self.sess.run([self.loss, self.Qs, self.train_op], feed_dict={
+            loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
                 self.inputs: state_id,
                 self.action_t: act,
                 self.reward: reward,
@@ -101,7 +111,6 @@ class TabularQAgent(BasicAgent):
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,
             self.loss_plh: np.mean(av_loss),
-            self.qs_plh: qs
         })
         self.sw.add_summary(summary, episode_id)
 
@@ -111,12 +120,24 @@ class BackwardTabularQAgent(TabularQAgent):
     """
     Agent implementing Backward TD(lambda) tabular Q-learning.
     """
+    def __init__(self, config, env):
+        self.lambda_value = config['lambda']
+
+        super(BackwardTabularQAgent, self).__init__(config, env)
+
+    def get_best_config(self):
+        return {
+            'lr': 0.1
+            , 'discount': 0.99
+            , 'N0': 100
+            , 'min_eps': 0.01
+            , 'initial_q_value': 0
+            , 'lambda': .9
+        }
 
     def buildGraph(self, graph):
         with graph.as_default():
-            self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
-            self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
-            self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
             with tf.variable_scope('Qs'):
                 self.Qs = tf.Variable(
@@ -124,7 +145,7 @@ class BackwardTabularQAgent(TabularQAgent):
                     , name = "Qs"
                     , dtype=tf.float32
                 )
-                self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+                tf.summary.histogram('Qarray', self.Qs)
                 self.q_preds = self.Qs[self.inputs]
 
             self.action_t = capacities.epsGreedy(
@@ -132,13 +153,15 @@ class BackwardTabularQAgent(TabularQAgent):
             )
             self.q_t = self.q_preds[self.action_t]
 
+            et, update_et_op, self.reset_et_op = capacities.eligibilityTraces(self.inputs, self.action_t, [self.nb_state, self.action_space.n], self.discount, self.lambda_value)
+
             with tf.variable_scope('Training'):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
                 self.next_state = tf.placeholder(tf.int32, shape=[], name="nextState")
                 next_max_action_t = tf.cast(tf.argmax(self.Qs[self.next_state], 0), tf.int32)
                 target_q = tf.stop_gradient(self.reward + self.discount * self.Qs[self.next_state, next_max_action_t])
-                self.Et = tf.placeholder(tf.float32, shape=[self.nb_state, self.action_space.n], name="Et")
-                self.loss = - tf.stop_gradient(target_q - self.q_t) * self.Et * self.Qs
+                with tf.control_dependencies([update_et_op]):
+                    self.loss = - tf.stop_gradient(target_q - self.q_t) * et * self.Qs
 
                 adam = tf.train.AdamOptimizer(self.lr)
                 self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
@@ -148,11 +171,9 @@ class BackwardTabularQAgent(TabularQAgent):
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)
             self.loss_plh = tf.placeholder(tf.float32, shape=[])
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
-            self.qs_plh = tf.placeholder(tf.float32, shape=[self.nb_state, self.action_space.n])
-            self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -165,48 +186,9 @@ class BackwardTabularQAgent(TabularQAgent):
         return graph
 
     def learnFromEpisode(self, env, render=False):
-        obs = env.reset()
-        score = 0
-        av_loss = []
-        done = False
-        Et = np.zeros([self.nb_state, self.action_space.n])
-        visited_sa = []
-        lambda_val = 0.9
-        while True:
-            if render:
-                env.render()
+        self.sess.run(self.reset_et_op)
 
-            act, state_id = self.act(obs)
-            for s, a in visited_sa:
-                Et[s, a] *= self.discount * lambda_val
-            Et[state_id, act] = 1
-            visited_sa.append((state_id, act))
-
-            next_obs, reward, done, info = env.step(act)
-
-            next_state_id = self.phi(next_obs, done)
-            loss, qs, _ = self.sess.run([self.loss, self.Qs, self.train_op], feed_dict={
-                self.inputs: state_id,
-                self.action_t: act,
-                self.reward: reward,
-                self.next_state: next_state_id,
-                self.Et: Et,
-            })
-
-            av_loss.append(loss)
-            score += reward
-            obs = next_obs
-            if done:
-                break
-
-        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
-            self.score_plh: score,
-            self.loss_plh: np.mean(av_loss),
-            self.qs_plh: qs
-        })
-        self.sw.add_summary(summary, episode_id)
-
-        return
+        super(BackwardTabularQAgent, self).learnFromEpisode(env, render)
 
 class TabularQplusAgent(TabularQAgent):
     """
@@ -270,7 +252,7 @@ class TabularQplusAgent(TabularQAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -403,7 +385,7 @@ class TabularFixedQplusAgent(TabularQAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -546,7 +528,7 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -676,7 +658,7 @@ class TabularQERAgent(TabularQAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
             self.saver = tf.train.Saver()
 
@@ -795,7 +777,7 @@ class TabularFixedQERAgent(TabularQAgent):
             self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter()
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
             self.event_count, self.inc_event_count_op = capacities.counter()
 
             self.saver = tf.train.Saver()

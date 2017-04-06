@@ -11,19 +11,6 @@ class TabularQAgent(BasicAgent):
         config.update(phis.getPhiConfig(config['env_name'], config['debug']))
         super(TabularQAgent, self).__init__(config, env)
 
-        self.N0 = self.config['N0']
-        self.min_eps = self.config['min_eps']
-        self.initial_q_value = self.config['initial_q_value']
-
-        self.graph = self.buildGraph(tf.Graph())
-
-        # For tabular use, no need for a lot of GPU
-        gpu_options = tf.GPUOptions(allow_growth=True)
-        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
-        self.sess = tf.Session(config=sessConfig, graph=self.graph)
-        self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
-        self.init()
-
     def get_best_config(self):
         return {
             'lr': 0.1
@@ -33,14 +20,20 @@ class TabularQAgent(BasicAgent):
             , 'initial_q_value': 0
         }
 
+    def set_agent_props(self):
+        self.N0 = self.config['N0']
+        self.min_eps = self.config['min_eps']
+        self.initial_q_value = self.config['initial_q_value']
+
     def buildGraph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
-            with tf.variable_scope('Qs'):
-                self.Qs = tf.Variable(
-                    initial_value=self.initial_q_value * np.ones([self.nb_state, self.action_space.n])
-                    , name = "Qs"
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.Qs = tf.get_variable('Qs'
+                    , shape=[self.nb_state, self.action_space.n]
+                    , initializer=tf.constant_initializer(self.initial_q_value)
                     , dtype=tf.float32
                 )
                 tf.summary.histogram('Qarray', self.Qs)
@@ -120,11 +113,6 @@ class BackwardTabularQAgent(TabularQAgent):
     """
     Agent implementing Backward TD(lambda) tabular Q-learning.
     """
-    def __init__(self, config, env):
-        self.lambda_value = config['lambda']
-
-        super(BackwardTabularQAgent, self).__init__(config, env)
-
     def get_best_config(self):
         return {
             'lr': 0.1
@@ -135,14 +123,20 @@ class BackwardTabularQAgent(TabularQAgent):
             , 'lambda': .9
         }
 
+    def set_agent_props(self):
+        super(BackwardTabularQAgent, self).set_agent_props()
+
+        self.lambda_value = self.config['lambda']
+
     def buildGraph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
-            with tf.variable_scope('Qs'):
-                self.Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
-                    , name = "Qs"
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.Qs = tf.get_variable('Qs'
+                    , shape=[self.nb_state, self.action_space.n]
+                    , initializer=tf.constant_initializer(self.initial_q_value)
                     , dtype=tf.float32
                 )
                 tf.summary.histogram('Qarray', self.Qs)
@@ -190,42 +184,47 @@ class BackwardTabularQAgent(TabularQAgent):
 
         super(BackwardTabularQAgent, self).learnFromEpisode(env, render)
 
-class TabularQplusAgent(TabularQAgent):
+class TabularQERAgent(TabularQAgent):
     """
     Agent implementing tabular Q-learning with experience replay.
     """
-    def __init__(self, config, env):
-        self.er_every = config['er_every']
-        self.er_batch_size = config['er_batch_size']
-        self.er_epoch_size = config['er_epoch_size']
-        self.er_rm_size = config['er_rm_size']
+    def get_best_config(self):
+        return {
+            'lr': 0.1
+            , 'discount': 0.99
+            , 'N0': 100
+            , 'min_eps': 0.01
+            , 'initial_q_value': 0
+            , 'lambda': .9
+            , 'er_batch_size': 300
+            , 'er_rm_size': 20000
+        }
 
-        super(TabularQplusAgent, self).__init__(config, env)
+    def set_agent_props(self):
+        super(TabularQERAgent, self).set_agent_props()
+
+        self.er_batch_size = self.config['er_batch_size']
+        self.er_rm_size = self.config['er_rm_size']
+
+        self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
+        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
     def buildGraph(self, graph):
         with graph.as_default():
-            self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
-            self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
-            self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
-            self.replayMemory = np.array([], dtype=self.replayMemoryDt)
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
-            with tf.variable_scope('Qs'):
-                self.Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
-                    , name = "Qs"
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.Qs = tf.get_variable('Qs'
+                    , shape=[self.nb_state, self.action_space.n]
+                    , initializer=tf.constant_initializer(self.initial_q_value)
                     , dtype=tf.float32
                 )
-                self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+                tf.summary.histogram('Qarray', self.Qs)
                 self.q_preds = self.Qs[self.inputs]
 
             self.action_t = capacities.epsGreedy(
                 self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
-            )
-
-            adam = tf.train.AdamOptimizer(self.lr)
-            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
-                self.Qs, self.discount, self.q_preds, self.action_t, adam
             )
 
             # Experienced replay part
@@ -234,22 +233,22 @@ class TabularQplusAgent(TabularQAgent):
                 self.er_actions = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
                 self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
                 self.er_next_states = tf.placeholder(tf.int32, shape=[None], name="ERNextState")
+
                 er_next_max_action_t = tf.cast(tf.argmax(tf.gather(self.Qs, self.er_next_states), 1), tf.int32)
                 er_next_sa_pairs = tf.stack([self.er_next_states, er_next_max_action_t], 1)
                 er_target_qs = tf.stop_gradient(self.er_rewards + self.discount * tf.gather_nd(self.Qs, er_next_sa_pairs))
                 er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
                 er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
-                er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
+                self.er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
+
                 er_adam = tf.train.AdamOptimizer(self.lr)
-                self.er_global_step = tf.Variable(0, trainable=False)
-                self.er_train_op = er_adam.minimize(er_loss, global_step=self.er_global_step)
+                self.er_global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                self.er_train_op = er_adam.minimize(self.er_loss, global_step=self.er_global_step)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)
             self.loss_plh = tf.placeholder(tf.float32, shape=[])
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
-            self.qs_plh = tf.placeholder(tf.float32, shape=[self.nb_state, self.action_space.n])
-            self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
@@ -276,9 +275,244 @@ class TabularQplusAgent(TabularQAgent):
 
             act, state_id = self.act(obs)
             next_obs, reward, done, info = env.step(act)
-            
+
             next_state_id = self.phi(next_obs, done)
-            loss, qs, _ = self.sess.run([self.loss, self.Qs, self.train_op], feed_dict={
+            memory = np.array([(state_id, act, reward, next_state_id)], dtype=self.replayMemoryDt)
+            if self.replayMemory.shape[0] >= self.er_rm_size:
+                self.replayMemory = np.delete(self.replayMemory, 0)
+            self.replayMemory = np.append(self.replayMemory, memory)
+
+            memories = np.random.choice(self.replayMemory, self.er_batch_size)
+            loss, _ = self.sess.run([self.er_loss, self.er_train_op], feed_dict={
+                self.er_inputs: memories['states'],
+                self.er_actions: memories['actions'],
+                self.er_rewards: memories['rewards'],
+                self.er_next_states: memories['next_states'],
+            })
+
+            av_loss.append(loss)
+            score += reward
+            obs = next_obs
+            if done:
+                break
+
+        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
+            self.score_plh: score,
+            self.loss_plh: np.mean(av_loss)
+        })
+        self.sw.add_summary(summary, episode_id)
+
+        return
+
+class TabularFixedQERAgent(TabularQERAgent):
+    """
+    Agent implementing tabular Q-learning with experience replay and a second fixed network.
+    """
+    def get_best_config(self):
+        return {}
+
+    def __init__(self, config, env):
+        super(TabularFixedQERAgent, self).__init__(config, env)
+
+        self.er_every = config['er_every']
+
+    def buildGraph(self, graph):
+        with graph.as_default():
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.Qs = tf.get_variable('Qs'
+                    , shape=[self.nb_state, self.action_space.n]
+                    , initializer=tf.constant_initializer(self.initial_q_value)
+                    , dtype=tf.float32
+                )
+                tf.summary.histogram('Qarray', self.Qs)
+                self.q_preds = self.Qs[self.inputs]
+
+            fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
+            with tf.variable_scope(fixed_q_scope):
+                self.update_fixed_vars_op = capacities.fixScope(q_scope)
+
+            self.action_t = capacities.epsGreedy(
+                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
+            )
+
+            # Experienced replay part
+            with tf.variable_scope('ExperienceReplay'):
+                with tf.variable_scope(fixed_q_scope, reuse=True):
+                    fixed_Qs = tf.get_variable('Qs')
+
+                self.er_inputs = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
+                self.er_actions = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
+                self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
+                self.er_next_states = tf.placeholder(tf.int32, shape=[None], name="ERNextState")
+
+                er_next_max_action_t = tf.cast(tf.argmax(tf.gather(fixed_Qs, self.er_next_states), 1), tf.int32)
+                er_next_sa_pairs = tf.stack([self.er_next_states, er_next_max_action_t], 1)
+                er_target_qs = tf.stop_gradient(self.er_rewards + self.discount * tf.gather_nd(fixed_Qs, er_next_sa_pairs))
+                er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
+                er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
+                self.er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
+
+                er_adam = tf.train.AdamOptimizer(self.lr)
+                self.er_global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                self.er_train_op = er_adam.minimize(self.er_loss, global_step=self.er_global_step)
+
+            self.score_plh = tf.placeholder(tf.float32, shape=[])
+            self.score_sum_t = tf.summary.scalar('score', self.score_plh)
+            self.loss_plh = tf.placeholder(tf.float32, shape=[])
+            self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
+            self.all_summary_t = tf.summary.merge_all()
+
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+            self.event_count, self.inc_event_count_op = capacities.counter("event_count")
+
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
+
+            # Playing part
+            self.pscore_plh = tf.placeholder(tf.float32, shape=[])
+            self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
+
+        return graph
+
+    def learnFromEpisode(self, env, render=False):
+        obs = env.reset()
+        score = 0
+        av_loss = []
+        done = False
+
+        while True:
+            if render:
+                env.render()
+
+            act, state_id = self.act(obs)
+            next_obs, reward, done, info = env.step(act)
+
+            next_state_id = self.phi(next_obs, done)
+            memory = np.array([(state_id, act, reward, next_state_id)], dtype=self.replayMemoryDt)
+            if self.replayMemory.shape[0] >= self.er_rm_size:
+                self.replayMemory = np.delete(self.replayMemory, 0)
+            self.replayMemory = np.append(self.replayMemory, memory)
+
+            memories = np.random.choice(self.replayMemory, self.er_batch_size)
+            loss, _, event_count, _ = self.sess.run([self.er_loss, self.inc_event_count_op, self.event_count, self.er_train_op], feed_dict={
+                self.er_inputs: memories['states'],
+                self.er_actions: memories['actions'],
+                self.er_rewards: memories['rewards'],
+                self.er_next_states: memories['next_states'],
+            })
+            if event_count % self.er_every == 0:
+                self.sess.run(self.update_fixed_vars_op)
+
+            av_loss.append(loss)
+            score += reward
+            obs = next_obs
+            if done:
+                break
+
+        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
+            self.score_plh: score,
+            self.loss_plh: np.mean(av_loss)
+        })
+        self.sw.add_summary(summary, episode_id)
+
+        return
+
+class TabularQOfflineERAgent(TabularQAgent):
+    """
+    Agent implementing tabular Q-learning with offline experience replay.
+    """
+    def get_best_config(self):
+        pass
+
+    def set_agent_props(self):
+        super(TabularQOfflineERAgent, self).set_agent_props()
+
+        self.er_every = self.config['er_every']
+        self.er_batch_size = self.config['er_batch_size']
+        self.er_epoch_size = self.config['er_epoch_size']
+        self.er_rm_size = self.config['er_rm_size']
+
+        self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
+        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
+
+    def buildGraph(self, graph):
+        with graph.as_default():
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.Qs = tf.get_variable('Qs'
+                    , shape=[self.nb_state, self.action_space.n]
+                    , initializer=tf.constant_initializer(self.initial_q_value)
+                    , dtype=tf.float32
+                )
+                tf.summary.histogram('Qarray', self.Qs)
+                self.q_preds = self.Qs[self.inputs]
+
+            self.action_t = capacities.epsGreedy(
+                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
+            )
+
+            adam = tf.train.AdamOptimizer(self.lr)
+            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t, adam
+            )
+
+            # Experienced replay part
+            with tf.variable_scope('ExperienceReplay'):
+                self.er_inputs = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
+                self.er_actions = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
+                self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
+                self.er_next_states = tf.placeholder(tf.int32, shape=[None], name="ERNextState")
+
+                er_next_max_action_t = tf.cast(tf.argmax(tf.gather(self.Qs, self.er_next_states), 1), tf.int32)
+                er_next_sa_pairs = tf.stack([self.er_next_states, er_next_max_action_t], 1)
+                er_target_qs = tf.stop_gradient(self.er_rewards + self.discount * tf.gather_nd(self.Qs, er_next_sa_pairs))
+                er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
+                er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
+                er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
+
+                er_adam = tf.train.AdamOptimizer(self.lr)
+                self.er_global_step = tf.Variable(0, trainable=False)
+                self.er_train_op = er_adam.minimize(er_loss, global_step=self.er_global_step)
+
+            self.score_plh = tf.placeholder(tf.float32, shape=[])
+            self.score_sum_t = tf.summary.scalar('score', self.score_plh)
+            self.loss_plh = tf.placeholder(tf.float32, shape=[])
+            self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
+            self.all_summary_t = tf.summary.merge_all()
+
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
+
+            # Playing part
+            self.pscore_plh = tf.placeholder(tf.float32, shape=[])
+            self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
+
+        return graph
+
+    def learnFromEpisode(self, env, render=False):
+        obs = env.reset()
+        score = 0
+        av_loss = []
+        done = False
+
+        while True:
+            if render:
+                env.render()
+
+            act, state_id = self.act(obs)
+            next_obs, reward, done, info = env.step(act)
+
+            next_state_id = self.phi(next_obs, done)
+            loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
                 self.inputs: state_id,
                 self.action_t: act,
                 self.reward: reward,
@@ -297,8 +531,7 @@ class TabularQplusAgent(TabularQAgent):
 
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,
-            self.loss_plh: np.mean(av_loss),
-            self.qs_plh: qs
+            self.loss_plh: np.mean(av_loss)
         })
         self.sw.add_summary(summary, episode_id)
 
@@ -315,43 +548,41 @@ class TabularQplusAgent(TabularQAgent):
 
         return
 
-class TabularFixedQplusAgent(TabularQAgent):
+class TabularFixedQOfflineERAgent(TabularQAgent):
     """
-    Agent implementing tabular Q-learning with fixed Qs and experience replay.
+    Agent implementing tabular Q-learning with offline experience replay and a second fixed network.
     """
-    def __init__(self, config, env):
-        self.er_every = config['er_every']
-        self.er_batch_size = config['er_batch_size']
-        self.er_epoch_size = config['er_epoch_size']
-        self.er_rm_size = config['er_rm_size']
+    def get_best_config(self):
+        pass
 
-        super(TabularFixedQplusAgent, self).__init__(config, env)
+    def set_agent_props(self):
+        super(TabularFixedQOfflineERAgent, self).set_agent_props()
+
+        self.er_every = self.config['er_every']
+        self.er_batch_size = self.config['er_batch_size']
+        self.er_epoch_size = self.config['er_epoch_size']
+        self.er_rm_size = self.config['er_rm_size']
+
+        self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
+        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
     def buildGraph(self, graph):
         with graph.as_default():
-            self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
-            self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
-            self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
-            self.replayMemory = np.array([], dtype=self.replayMemoryDt)
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
-            with tf.variable_scope('Qs'):
-                self.Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
-                    , name = "Qs"
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.Qs = tf.get_variable('Qs'
+                    , shape=[self.nb_state, self.action_space.n]
+                    , initializer=tf.constant_initializer(self.initial_q_value)
                     , dtype=tf.float32
                 )
-                self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+                tf.summary.histogram('Qarray', self.Qs)
                 self.q_preds = self.Qs[self.inputs]
 
-            with tf.variable_scope('FixedQs'):
-                self.fixed_Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
-                    , name = "fixedQs"
-                    , trainable=False
-                    , dtype=tf.float32
-                )
-                self.update_fixed_vars_op = tf.assign(self.fixed_Qs, self.Qs)
+            fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
+            with tf.variable_scope(fixed_q_scope):
+                self.update_fixed_vars_op = capacities.fixScope(q_scope)
 
             self.action_t = capacities.epsGreedy(
                 self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
@@ -363,13 +594,16 @@ class TabularFixedQplusAgent(TabularQAgent):
             )
 
             with tf.variable_scope('ExperienceReplay'):
+                with tf.variable_scope(fixed_q_scope, reuse=True):
+                    fixed_Qs = tf.get_variable('Qs')
+
                 self.er_inputs = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
                 self.er_actions = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
                 self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
                 self.er_next_states = tf.placeholder(tf.int32, shape=[None], name="ERNextState")
-                er_next_max_action_t = tf.cast(tf.argmax(tf.gather(self.fixed_Qs, self.er_next_states), 1), tf.int32)
+                er_next_max_action_t = tf.cast(tf.argmax(tf.gather(fixed_Qs, self.er_next_states), 1), tf.int32)
                 er_next_sa_pairs = tf.stack([self.er_next_states, er_next_max_action_t], 1)
-                er_target_qs = tf.stop_gradient(self.er_rewards + self.discount * tf.gather_nd(self.fixed_Qs, er_next_sa_pairs))
+                er_target_qs = tf.stop_gradient(self.er_rewards + self.discount * tf.gather_nd(fixed_Qs, er_next_sa_pairs))
                 er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
                 er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
                 er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
@@ -409,7 +643,7 @@ class TabularFixedQplusAgent(TabularQAgent):
 
             act, state_id = self.act(obs)
             next_obs, reward, done, info = env.step(act)
-            
+
             next_state_id = self.phi(next_obs, done)
             loss, qs, _ = self.sess.run([self.loss, self.Qs, self.train_op], feed_dict={
                 self.inputs: state_id,
@@ -449,43 +683,41 @@ class TabularFixedQplusAgent(TabularQAgent):
 
         return
 
-class BackwardTabularFixedQplusAgent(TabularQAgent):
+class BackwardTabularFixedQOfflineERAgent(TabularQAgent):
     """
-    Agent implementing backward TD(lambda) tabular Q-learning with fixed Qs and experience replay.
+    Agent implementing tabular Q-learning with offline experience replay and a second fixed network + eligibility traces.
     """
-    def __init__(self, config, env):
-        self.er_every = config['er_every']
-        self.er_batch_size = config['er_batch_size']
-        self.er_epoch_size = config['er_epoch_size']
-        self.er_rm_size = config['er_rm_size']
+    def get_best_config(self):
+        pass
 
-        super(BackwardTabularFixedQplusAgent, self).__init__(config, env)
+    def set_agent_props(self):
+        super(BackwardTabularFixedQOfflineERAgent, self).set_agent_props()
+
+        self.er_every = self.config['er_every']
+        self.er_batch_size = self.config['er_batch_size']
+        self.er_epoch_size = self.config['er_epoch_size']
+        self.er_rm_size = self.config['er_rm_size']
+
+        self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
+        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
     def buildGraph(self, graph):
         with graph.as_default():
-            self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
-            self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
-            self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
-            self.replayMemory = np.array([], dtype=self.replayMemoryDt)
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
-            with tf.variable_scope('Qs'):
-                self.Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
-                    , name = "Qs"
+            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            with tf.variable_scope(q_scope):
+                self.Qs = tf.get_variable('Qs'
+                    , shape=[self.nb_state, self.action_space.n]
+                    , initializer=tf.constant_initializer(self.initial_q_value)
                     , dtype=tf.float32
                 )
-                self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+                tf.summary.histogram('Qarray', self.Qs)
                 self.q_preds = self.Qs[self.inputs]
 
-            with tf.variable_scope('FixedQs'):
-                self.fixed_Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
-                    , name = "fixedQs"
-                    , trainable=False
-                    , dtype=tf.float32
-                )
-                self.update_fixed_vars_op = tf.assign(self.fixed_Qs, self.Qs)
+            fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
+            with tf.variable_scope(fixed_q_scope):
+                self.update_fixed_vars_op = capacities.fixScope(q_scope)
 
             self.action_t = capacities.epsGreedy(
                 self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
@@ -499,19 +731,22 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
                 target_q = tf.stop_gradient(self.reward + self.discount * self.Qs[self.next_state, next_max_action_t])
                 self.Et = tf.placeholder(tf.float32, shape=[self.nb_state, self.action_space.n], name="Et")
                 self.loss = - tf.stop_gradient(target_q - self.q_t) * self.Et * self.Qs
-                
+
                 adam = tf.train.AdamOptimizer(self.lr)
                 self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
                 self.train_op = adam.minimize(self.loss, global_step=self.global_step)
 
             with tf.variable_scope('ExperienceReplay'):
+                with tf.variable_scope(fixed_q_scope, reuse=True):
+                    fixed_Qs = tf.get_variable('Qs')
+
                 self.er_inputs = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
                 self.er_actions = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
                 self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
                 self.er_next_states = tf.placeholder(tf.int32, shape=[None], name="ERNextState")
-                er_next_max_action_t = tf.cast(tf.argmax(tf.gather(self.fixed_Qs, self.er_next_states), 1), tf.int32)
+                er_next_max_action_t = tf.cast(tf.argmax(tf.gather(fixed_Qs, self.er_next_states), 1), tf.int32)
                 er_next_sa_pairs = tf.stack([self.er_next_states, er_next_max_action_t], 1)
-                er_target_qs = tf.stop_gradient(self.er_rewards + self.discount * tf.gather_nd(self.fixed_Qs, er_next_sa_pairs))
+                er_target_qs = tf.stop_gradient(self.er_rewards + self.discount * tf.gather_nd(fixed_Qs, er_next_sa_pairs))
                 er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
                 er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
                 er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
@@ -524,8 +759,6 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)
             self.loss_plh = tf.placeholder(tf.float32, shape=[])
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
-            self.qs_plh = tf.placeholder(tf.float32, shape=[self.nb_state, self.action_space.n])
-            self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
             self.all_summary_t = tf.summary.merge_all()
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
@@ -561,10 +794,10 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
                 Et[s, a] *= self.discount * lambda_val
             Et[state_id, act] = 1
             visited_sa.append((state_id, act))
-            
+
 
             next_state_id = self.phi(next_obs, done)
-            loss, qs, _ = self.sess.run([self.loss, self.Qs, self.train_op], feed_dict={
+            loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
                 self.inputs: state_id,
                 self.action_t: act,
                 self.reward: reward,
@@ -584,8 +817,7 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
 
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,
-            self.loss_plh: np.mean(av_loss),
-            self.qs_plh: qs
+            self.loss_plh: np.mean(av_loss)
         })
         self.sw.add_summary(summary, episode_id)
 
@@ -602,236 +834,3 @@ class BackwardTabularFixedQplusAgent(TabularQAgent):
                 })
 
         return
-
-class TabularQERAgent(TabularQAgent):
-    """
-    Agent implementing tabular Q-learning with experience replay.
-    """
-    def __init__(self, config, env):
-        self.er_batch_size = config['er_batch_size']
-        self.er_rm_size = config['er_rm_size']
-
-        super(TabularQERAgent, self).__init__(config, env)
-
-    def buildGraph(self, graph):
-        with graph.as_default():
-            self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
-            self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
-            self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
-            self.replayMemory = np.array([], dtype=self.replayMemoryDt)
-
-            with tf.variable_scope('Qs'):
-                self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
-                self.Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
-                    , name = "Qs"
-                    , dtype=tf.float32
-                )
-                self.q_preds = self.Qs[self.inputs]
-
-            self.action_t = capacities.epsGreedy(
-                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
-            )
-
-            # Experienced replay part
-            with tf.variable_scope('ExperienceReplay'):
-                self.er_inputs = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
-                self.er_actions = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
-                self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
-                self.er_next_states = tf.placeholder(tf.int32, shape=[None], name="ERNextState")
-                er_next_max_action_t = tf.cast(tf.argmax(tf.gather(self.Qs, self.er_next_states), 1), tf.int32)
-                er_next_sa_pairs = tf.stack([self.er_next_states, er_next_max_action_t], 1)
-                er_target_qs = tf.stop_gradient(self.er_rewards + self.discount * tf.gather_nd(self.Qs, er_next_sa_pairs))
-                er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
-                er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
-                self.er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
-                er_adam = tf.train.AdamOptimizer(self.lr)
-                self.er_global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
-                self.er_train_op = er_adam.minimize(self.er_loss, global_step=self.er_global_step)
-
-            self.score_plh = tf.placeholder(tf.float32, shape=[])
-            self.score_sum_t = tf.summary.scalar('score', self.score_plh)
-            self.loss_plh = tf.placeholder(tf.float32, shape=[])
-            self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
-            self.qs_plh = tf.placeholder(tf.float32, shape=[self.nb_state, self.action_space.n])
-            self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
-            self.all_summary_t = tf.summary.merge_all()
-
-            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
-
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
-            # Playing part
-            self.pscore_plh = tf.placeholder(tf.float32, shape=[])
-            self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
-
-        return graph
-
-    def learnFromEpisode(self, env, render=False):
-        obs = env.reset()
-        score = 0
-        av_loss = []
-        done = False
-
-        while True:
-            if render:
-                env.render()
-
-            act, state_id = self.act(obs)
-            next_obs, reward, done, info = env.step(act)
-            
-            next_state_id = self.phi(next_obs, done)
-            memory = np.array([(state_id, act, reward, next_state_id)], dtype=self.replayMemoryDt)
-            if self.replayMemory.shape[0] >= self.er_rm_size:
-                self.replayMemory = np.delete(self.replayMemory, 0)
-            self.replayMemory = np.append(self.replayMemory, memory)
-
-            memories = np.random.choice(self.replayMemory, self.er_batch_size)
-            loss, qs, _ = self.sess.run([self.er_loss, self.Qs, self.er_train_op], feed_dict={
-                self.er_inputs: memories['states'],
-                self.er_actions: memories['actions'],
-                self.er_rewards: memories['rewards'],
-                self.er_next_states: memories['next_states'],
-            })
-
-            av_loss.append(loss)
-            score += reward
-            obs = next_obs
-            if done:
-                break
-
-        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
-            self.score_plh: score,
-            self.loss_plh: np.mean(av_loss),
-            self.qs_plh: qs
-        })
-        self.sw.add_summary(summary, episode_id)
-
-        return
-
-class TabularFixedQERAgent(TabularQAgent):
-    """
-    Agent implementing tabular Q-learning with experience replay.
-    """
-    def __init__(self, config, env):
-        self.er_every = config['er_every']
-        self.er_batch_size = config['er_batch_size']
-        self.er_rm_size = config['er_rm_size']
-
-        super(TabularFixedQERAgent, self).__init__(config, env)
-
-    def buildGraph(self, graph):
-        with graph.as_default():
-            self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
-            self.N_s = tf.Variable(tf.ones(shape=[self.nb_state]), name='N_s', trainable=False)
-            self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
-            self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
-            self.replayMemory = np.array([], dtype=self.replayMemoryDt)
-
-            with tf.variable_scope('Qs'):
-                self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
-                self.Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
-                    , name = "Qs"
-                    , dtype=tf.float32
-                )
-                self.q_preds = self.Qs[self.inputs]
-
-            with tf.variable_scope('FixedQs'):
-                self.fixed_Qs = tf.Variable(
-                    initial_value=np.zeros([self.nb_state, self.action_space.n])
-                    , name = "fixedQs"
-                    , trainable=False
-                    , dtype=tf.float32
-                )
-                self.update_fixed_vars_op = tf.assign(self.fixed_Qs, self.Qs)
-
-            self.action_t = capacities.epsGreedy(
-                self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
-            )
-
-            # Experienced replay part
-            with tf.variable_scope('ExperienceReplay'):
-                self.er_inputs = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
-                self.er_actions = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
-                self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
-                self.er_next_states = tf.placeholder(tf.int32, shape=[None], name="ERNextState")
-                er_next_max_action_t = tf.cast(tf.argmax(tf.gather(self.fixed_Qs, self.er_next_states), 1), tf.int32)
-                er_next_sa_pairs = tf.stack([self.er_next_states, er_next_max_action_t], 1)
-                er_target_qs = tf.stop_gradient(self.er_rewards + self.discount * tf.gather_nd(self.fixed_Qs, er_next_sa_pairs))
-                er_sa_pairs = tf.stack([self.er_inputs, self.er_actions], 1)
-                er_qs = tf.gather_nd(self.Qs, er_sa_pairs)
-                self.er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
-                er_adam = tf.train.AdamOptimizer(self.lr)
-                self.er_global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
-                self.er_train_op = er_adam.minimize(self.er_loss, global_step=self.er_global_step)
-
-            self.score_plh = tf.placeholder(tf.float32, shape=[])
-            self.score_sum_t = tf.summary.scalar('score', self.score_plh)
-            self.loss_plh = tf.placeholder(tf.float32, shape=[])
-            self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
-            self.qs_plh = tf.placeholder(tf.float32, shape=[self.nb_state, self.action_space.n])
-            self.qs_sum_t = tf.summary.histogram('Qarray', self.qs_plh)
-            self.all_summary_t = tf.summary.merge_all()
-
-            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
-            self.event_count, self.inc_event_count_op = capacities.counter()
-
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
-            # Playing part
-            self.pscore_plh = tf.placeholder(tf.float32, shape=[])
-            self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
-
-        return graph
-
-    def learnFromEpisode(self, env, render=False):
-        obs = env.reset()
-        score = 0
-        av_loss = []
-        done = False
-
-        while True:
-            if render:
-                env.render()
-
-            act, state_id = self.act(obs)
-            next_obs, reward, done, info = env.step(act)
-            next_state_id = self.phi(next_obs, done)
-            memory = np.array([(state_id, act, reward, next_state_id)], dtype=self.replayMemoryDt)
-            if self.replayMemory.shape[0] >= self.er_rm_size:
-                self.replayMemory = np.delete(self.replayMemory, 0)
-            self.replayMemory = np.append(self.replayMemory, memory)
-
-            memories = np.random.choice(self.replayMemory, self.er_batch_size)
-            loss, qs, _, event_count, _ = self.sess.run([self.er_loss, self.Qs, self.inc_event_count_op, self.event_count, self.er_train_op], feed_dict={
-                self.er_inputs: memories['states'],
-                self.er_actions: memories['actions'],
-                self.er_rewards: memories['rewards'],
-                self.er_next_states: memories['next_states'],
-            })
-            if event_count % self.er_every == 0:
-                self.sess.run(self.update_fixed_vars_op)
-
-            av_loss.append(loss)
-            score += reward
-            obs = next_obs
-            if done:
-                break
-
-        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
-            self.score_plh: score,
-            self.loss_plh: np.mean(av_loss),
-            self.qs_plh: qs
-        })
-        self.sw.add_summary(summary, episode_id)
-
-        return
-
-
-

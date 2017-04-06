@@ -15,32 +15,23 @@ class DeepMCPolicyAgent(BasicAgent):
     """
     Agent implementing Policy gradient using Monte-Carlo control
     """
-
-    def __init__(self, config, env):
-        # Best conf:
-        # nb_units: 50
-        # lr: 1e-3
-        super(DeepMCPolicyAgent, self).__init__(config, env)
-
-        self.policy_params = {
-            'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
-            , 'nb_outputs': self.action_space.n
+    def get_best_config(self):
+        return {
+            'lr': 1e-3
+            , 'discount': 0.99
+            , 'nb_units': 50
         }
 
-        self.graph = self.buildGraph(tf.Graph())
-
-        gpu_options = tf.GPUOptions(allow_growth=True)
-        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
-        self.sess = tf.Session(config=sessConfig, graph=self.graph)
-        self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
-        self.init()
+    def set_agent_props(self):
+        self.policy_params = {
+            'nb_inputs': self.observation_space.shape[0] + 1
+            , 'nb_units': self.config['nb_units']
+            , 'nb_outputs': self.action_space.n
+        }
 
 
     def buildGraph(self, graph):
         with graph.as_default():
-
-            # Model
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -123,37 +114,20 @@ class DeepMCPolicyAgent(BasicAgent):
 
         return
 
-
-class MCActorCriticAgent(BasicAgent):
+class MCActorCriticAgent(DeepMCPolicyAgent):
     """
     Agent implementing Policy gradient using Monte-Carlo control
     """
+    def set_agent_props(self):
+        super(MCActorCriticAgent, self).set_agent_props()
 
-    def __init__(self, config, env):
-        # Best conf:
-        super(MCActorCriticAgent, self).__init__(config, env)
-
-        self.policy_params = {
-            'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
-            , 'nb_outputs': self.action_space.n
-        }
         self.q_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
+            , 'nb_units': self.config['nb_units']
             , 'nb_outputs': self.action_space.n
         }
         self.policy_lr = self.lr
         self.q_lr = self.lr
-
-        self.graph = self.buildGraph(tf.Graph())
-
-        gpu_options = tf.GPUOptions(allow_growth=True)
-        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
-        self.sess = tf.Session(config=sessConfig, graph=self.graph)
-        self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
-        self.init()
-
 
     def buildGraph(self, graph):
         with graph.as_default():
@@ -174,7 +148,7 @@ class MCActorCriticAgent(BasicAgent):
             with tf.variable_scope('Training'):
                 stacked_actions = tf.stack([tf.range(0, tf.shape(self.actions)[0]), tf.squeeze(self.actions, 1)], 1)
                 log_probs = tf.log(tf.gather_nd(self.probs, stacked_actions))
-                
+
                 qs = tf.gather_nd(self.q_values, stacked_actions)
 
                 self.policy_loss = - tf.reduce_sum(log_probs * tf.stop_gradient(qs))
@@ -220,23 +194,15 @@ class MCActorCriticAgent(BasicAgent):
 
         return graph
 
-    def act(self, obs):
-        state = [ np.concatenate((obs, [0])) ]
-        act = self.sess.run(self.action_t, feed_dict={
-            self.inputs: state
-        })
-
-        return (act, state)
-
     def learnFromEpisode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 
         score = 0
         historyType = np.dtype([
-            ('states', 'float32', (env.observation_space.shape[0] + 1,)), 
-            ('actions', 'int32', (1,)), 
-            ('rewards', 'float32'), 
+            ('states', 'float32', (env.observation_space.shape[0] + 1,)),
+            ('actions', 'int32', (1,)),
+            ('rewards', 'float32'),
             ('next_states', 'float32', (env.observation_space.shape[0] + 1,)),
             ('next_actions', 'int32'),
         ])
@@ -251,9 +217,9 @@ class MCActorCriticAgent(BasicAgent):
             next_act, _ = self.act(next_obs)
 
             memory = np.array([(
-                np.concatenate((obs, [0])), 
-                [act], 
-                reward, 
+                np.concatenate((obs, [0])),
+                [act],
+                reward,
                 np.concatenate((next_obs, [1 if done else 0])),
                 next_act
             )], dtype=historyType)
@@ -282,36 +248,10 @@ class MCActorCriticAgent(BasicAgent):
 
         return
 
-class ActorCriticAgent(BasicAgent):
+class ActorCriticAgent(MCActorCriticAgent):
     """
     Agent implementing Actor critic using REINFORCE
     """
-
-    def __init__(self, config, env):
-        # Best conf:
-        super(ActorCriticAgent, self).__init__(config, env)
-
-        self.policy_params = {
-            'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
-            , 'nb_outputs': self.action_space.n
-        }
-        self.q_params = {
-            'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
-            , 'nb_outputs': self.action_space.n
-        }
-        self.policy_lr = self.lr
-        self.q_lr = self.lr
-
-        self.graph = self.buildGraph(tf.Graph())
-
-        gpu_options = tf.GPUOptions(allow_growth=True)
-        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
-        self.sess = tf.Session(config=sessConfig, graph=self.graph)
-        self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
-        self.init()
-
     def buildGraph(self, graph):
         with graph.as_default():
             # Model
@@ -377,14 +317,6 @@ class ActorCriticAgent(BasicAgent):
 
         return graph
 
-    def act(self, obs):
-        state = [ np.concatenate((obs, [0])) ]
-        act = self.sess.run(self.action_t, feed_dict={
-            self.inputs: state
-        })
-
-        return (act, state)
-
     def learnFromEpisode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
@@ -428,41 +360,19 @@ class ActorCriticAgent(BasicAgent):
 
         return
 
-
 class A2CAgent(ActorCriticAgent):
     """
     Agent implementing Advantage Actor critic using REINFORCE
     """
-    def __init__(self, config, env):
-        # Best conf:
-        super(ActorCriticAgent, self).__init__(config, env)
+    def set_agent_props(self):
+        super(A2CAgent, self).set_agent_props()
 
-        self.policy_params = {
-            'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
-            , 'nb_outputs': self.action_space.n
-        }
-        self.q_params = {
-            'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
-            , 'nb_outputs': self.action_space.n
-        }
         self.v_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
+            , 'nb_units': self.config['nb_units']
             , 'nb_outputs': 1
         }
-        self.policy_lr = self.lr
-        self.q_lr = self.lr
         self.v_lr = self.lr
-
-        self.graph = self.buildGraph(tf.Graph())
-
-        gpu_options = tf.GPUOptions(allow_growth=True)
-        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
-        self.sess = tf.Session(config=sessConfig, graph=self.graph)
-        self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
-        self.init()
 
     def buildGraph(self, graph):
         with graph.as_default():
@@ -600,37 +510,20 @@ class A2CAgent(ActorCriticAgent):
 
         return
 
-
-class TDACAgent(ActorCriticAgent):
+class TDACAgent(DeepMCPolicyAgent):
     """
     Agent implementing TD Actor critic using REINFORCE
     """
-    def __init__(self, config, env):
-        # Best conf:
-        super(ActorCriticAgent, self).__init__(config, env)
+    def set_agent_props(self):
+        super(TDACAgent, self).set_agent_props()
 
-        self.policy_params = {
-            'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
-            , 'nb_outputs': self.action_space.n
-        }
         self.v_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
-            , 'nb_units': config['nb_units']
+            , 'nb_units': self.config['nb_units']
             , 'nb_outputs': 1
         }
-        
         self.policy_lr = self.lr
-        self.q_lr = self.lr
         self.v_lr = self.lr
-
-        self.graph = self.buildGraph(tf.Graph())
-
-        gpu_options = tf.GPUOptions(allow_growth=True)
-        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
-        self.sess = tf.Session(config=sessConfig, graph=self.graph)
-        self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
-        self.init()
 
     def buildGraph(self, graph):
         with graph.as_default():
@@ -741,5 +634,3 @@ class TDACAgent(ActorCriticAgent):
         self.sw.add_summary(summary, episode_id)
 
         return
-
-

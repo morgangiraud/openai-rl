@@ -47,24 +47,24 @@ def eligibilityTraces(inputs, action_t, et_shape, discount, lambda_value):
 
     return (et, update_et_op, reset_et_op)
 
-def tabularQValue(nb_state, nb_action):    
-    scope = tf.VariableScope('TabularQValue')
-    with tf.variable_scope(scope, reuse=False):
-        Q = tf.get_variable(
-            'Q'
-            , shape=[nb_state, nb_action]
-            , initializer=tf.zeros_initializer()
-            , dtype=tf.float32
-        )
+# def tabularQValue(nb_state, nb_action):
+#     scope = tf.VariableScope('TabularQValue')
+#     with tf.variable_scope(scope, reuse=False):
+#         Q = tf.get_variable(
+#             'Q'
+#             , shape=[nb_state, nb_action]
+#             , initializer=tf.zeros_initializer()
+#             , dtype=tf.float32
+#         )
 
-    def apply(inputs_t):
-        with tf.variable_scope(scope, reuse=True):
-            Q = tf.get_variable('Q')
-            out = tf.nn.embedding_lookup(Q, inputs_t)
+#     def apply(inputs_t):
+#         with tf.variable_scope(scope, reuse=True):
+#             Q = tf.get_variable('Q')
+#             out = tf.nn.embedding_lookup(Q, inputs_t)
 
-        return out
-        
-    return apply
+#         return out
+
+#     return apply
 
 
 def MSETabularQLearning(Qs_t, discount, q_preds, action_t, optimizer=None):
@@ -94,6 +94,19 @@ def counter(name):
 
     return (count_t, inc_count_op)
 
+def fixScope(from_scope):
+    update_fixed_vars_op = []
+    for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=from_scope.name):
+        fixed = tf.get_variable(
+            var.name.split("/")[-1].split(":")[0]
+            , shape=var.get_shape()
+            , trainable=False
+        )
+        assign_op = tf.assign(fixed, var)
+        update_fixed_vars_op.append(assign_op)
+
+    return update_fixed_vars_op
+
 
 def policy(network_params, inputs):
     W1 = tf.get_variable('W1'
@@ -117,18 +130,18 @@ def policy(network_params, inputs):
     a2 = tf.nn.relu(tf.matmul(a1, W2) + b2)
 
     W3 = tf.get_variable('W3'
-        , shape=[ network_params['nb_units'], network_params['nb_actions'] ]
+        , shape=[ network_params['nb_units'], network_params['nb_outputs'] ]
         , initializer=tf.random_normal_initializer(stddev=1e-2)
     )
     b3 = tf.get_variable('b3'
-        , shape=[ network_params['nb_actions'] ]
+        , shape=[ network_params['nb_outputs'] ]
         , initializer=tf.zeros_initializer()
     )
     logits = tf.matmul(a2, W3) + b3
     probs_t = tf.nn.softmax(logits)
 
     actions_t = tf.cast(tf.multinomial(logits, 1), tf.int32)
-        
+
     return (probs_t, actions_t)
 
 
@@ -156,11 +169,11 @@ def value_f(network_params, inputs):
     # a2 = tf.matmul(a1, W2) + b2
 
     W3 = tf.get_variable('W3'
-        , shape=[ network_params['nb_units'], network_params['nb_actions'] ]
+        , shape=[ network_params['nb_units'], network_params['nb_outputs'] ]
         , initializer=tf.random_normal_initializer(stddev=1e-2)
     )
     b3 = tf.get_variable('b3'
-        , shape=[ network_params['nb_actions'] ]
+        , shape=[ network_params['nb_outputs'] ]
         , initializer=tf.zeros_initializer()
     )
     values = tf.matmul(a2, W3) + b3

@@ -25,7 +25,7 @@ def CartPole0phi2(obs, done=False):
         1 if abs(obs[3]) > 0.4 else 0,
     ]
 
-    return ( 
+    return (
         2**0 * phi[0] + 2**1 * phi[1] + 2**2 * phi[2] + 2**3 * phi[3]
         + 2**4 * phi[4] + 2**5 * phi[5] + 2**6 * phi[6] + 2**7 * phi[7]
     )

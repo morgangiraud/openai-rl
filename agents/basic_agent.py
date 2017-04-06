@@ -18,7 +18,7 @@ class BasicAgent(object):
         else:
             if not isinstance(env.observation_space, Box):
                 raise Exception('Observation space {} incompatible with {}. (Only supports Box observation spaces.)'.format(action_space, self))
-            self.observation_space = env.observation_space      
+            self.observation_space = env.observation_space
         if not isinstance(env.action_space, Discrete):
             raise Exception('Action space {} incompatible with {}. (Only supports Discrete action spaces.)'.format(action_space, self))
         self.action_space = env.action_space
@@ -26,11 +26,29 @@ class BasicAgent(object):
         self.lr = config['lr']
         self.discount = config['discount']
 
+        self.set_agent_props()
+
         # Play part
         self.play_counter = 0
 
+        # Graph part
+        self.graph = self.buildGraph(tf.Graph())
+
+        # For tabular use, no need for a lot of GPU
+        gpu_options = tf.GPUOptions(allow_growth=True)
+        sessConfig = tf.ConfigProto(gpu_options=gpu_options)
+        self.sess = tf.Session(config=sessConfig, graph=self.graph)
+        self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
+        self.init()
+
     def get_best_config(self):
         return {}
+
+    def set_agent_props(self):
+        pass
+
+    def buildGraph(self, graph):
+        raise Exception('The buildGraph function must be overrided by the agent')
 
     def act(self, obs, eps=None):
         pass
@@ -48,7 +66,7 @@ class BasicAgent(object):
         if self.config['debug']:
             print('Saving to %s with global_step %d' % (self.result_dir, global_step))
         self.saver.save(self.sess, self.result_dir + '/agent', global_step)
-        
+
         if not os.path.isfile(self.result_dir + '/config.json'):
             if self.config['debug']:
                 print('Saving configuration')
@@ -78,7 +96,7 @@ class BasicAgent(object):
 
             act, state = self.act(obs)
             next_obs, reward, done, info = env.step(act)
-            
+
             score += reward
             obs = next_obs
             if done:

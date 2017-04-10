@@ -31,7 +31,7 @@ def CartPole0phi2(obs, done=False):
     )
 
 def getPhiConfig(env_name, debug=False):
-    if env_name == 'CartPole-v0':
+    if env_name == 'CartPole-v0' or env_name == 'CartPole-v1':
         if debug:
             return {
                 'nb_state': 2**4 + 1,

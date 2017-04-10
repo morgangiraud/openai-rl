@@ -47,27 +47,8 @@ def eligibilityTraces(inputs, action_t, et_shape, discount, lambda_value):
 
     return (et, update_et_op, reset_et_op)
 
-# def tabularQValue(nb_state, nb_action):
-#     scope = tf.VariableScope('TabularQValue')
-#     with tf.variable_scope(scope, reuse=False):
-#         Q = tf.get_variable(
-#             'Q'
-#             , shape=[nb_state, nb_action]
-#             , initializer=tf.zeros_initializer()
-#             , dtype=tf.float32
-#         )
 
-#     def apply(inputs_t):
-#         with tf.variable_scope(scope, reuse=True):
-#             Q = tf.get_variable('Q')
-#             out = tf.nn.embedding_lookup(Q, inputs_t)
-
-#         return out
-
-#     return apply
-
-
-def MSETabularQLearning(Qs_t, discount, q_preds, action_t, optimizer=None):
+def MSETabularQLearning(Qs_t, discount, q_preds, action_t):
     with tf.variable_scope('MSEQLearning'):
         reward = tf.placeholder(tf.float32, shape=[], name="reward")
         next_state = tf.placeholder(tf.int32, shape=[], name="nextState")
@@ -79,14 +60,7 @@ def MSETabularQLearning(Qs_t, discount, q_preds, action_t, optimizer=None):
 
         loss = tf.reduce_mean(tf.square(target_q - q_t))
 
-    with tf.variable_scope('Training'):
-        global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
-        if optimizer == None:
-            learning_rate = tf.train.inverse_time_decay(1., global_step, 1, 0.001, staircase=False, name="decay_lr")
-            optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-        train_op = optimizer.minimize(loss, global_step=global_step)
-
-    return (reward, next_state, loss, train_op)
+    return (reward, next_state, loss)
 
 def counter(name):
     count_t = tf.Variable(0, trainable=False, dtype=tf.int32, name=name)

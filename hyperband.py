@@ -136,7 +136,7 @@ class Hyperband:
         return {'results': results, 'best_counter':self.best_counter}
 
 def make_get_params(config):
-    get_N0 = lambda: np.random.randint(1, 1000)
+    get_N0 = lambda: np.random.randint(1, 1e5)
     get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
 
     get_er_every = lambda: np.random.randint(1, 1000)
@@ -147,7 +147,7 @@ def make_get_params(config):
     def get_tabular_params():
         get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
 
-        return {
+        return config.update({
             'lr': get_lr(),
             'N0': get_N0(),
             'min_eps': get_min_eps(),
@@ -155,18 +155,13 @@ def make_get_params(config):
             'er_batch_size': get_er_batch_size(),
             'er_epoch_size': get_er_epoch_size(),
             'er_rm_size': get_er_rm_size(),
-            'discount': config['discount'],
-            'debug': config['debug'],
-            'agent_name': config['agent_name'],
-            'env_name': config['env_name'],
-            'result_dir_prefix': config['result_dir_prefix'],
-        }
+        })
 
     def get_deep_params():
         get_lr = lambda: 1e-4 + (1e-2 - 1e-4) * np.random.random(1)[0]
         get_nb_units = lambda: np.random.randint(10, 100)
 
-        return {
+        return config.update({
             'lr': get_lr(),
             'nb_units': get_nb_units(),
             'N0': get_N0(),
@@ -175,12 +170,7 @@ def make_get_params(config):
             'er_batch_size': get_er_batch_size(),
             'er_epoch_size': get_er_epoch_size(),
             'er_rm_size': get_er_rm_size(),
-            'discount': config['discount'],
-            'debug': config['debug'],
-            'agent_name': config['agent_name'],
-            'env_name': config['env_name'],
-            'result_dir_prefix': config['result_dir_prefix'],
-        }
+        })
 
     if re.compile("tabular", re.I).search(config['agent_name']):
         return get_tabular_params

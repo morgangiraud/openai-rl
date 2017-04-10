@@ -19,7 +19,7 @@ flags.DEFINE_string('agent_name', 'DQNAgent', 'Name of the agent')
 flags.DEFINE_boolean('best', False, 'Use the best known configuration')
 flags.DEFINE_float('initial_q_value', 0., 'Initial Q values in the Tabular case')
 flags.DEFINE_float('lambda', .9, 'Lambda parameters used with eligibility traces')
-flags.DEFINE_float('discount', .99, 'Discount factor')
+flags.DEFINE_float('discount', .999, 'Discount factor')
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
 flags.DEFINE_float('nb_units', 20, 'Number of hidden units in Deep learning agents')
 

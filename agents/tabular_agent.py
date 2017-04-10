@@ -14,7 +14,7 @@ class TabularQAgent(BasicAgent):
     def get_best_config(self):
         return {
             'lr': 0.1
-            , 'discount': 0.99
+            , 'discount': 0.999
             , 'N0': 100
             , 'min_eps': 0.01
             , 'initial_q_value': 0
@@ -43,10 +43,16 @@ class TabularQAgent(BasicAgent):
                 self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
             )
 
-            adam = tf.train.AdamOptimizer(self.lr)
-            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
-                self.Qs, self.discount, self.q_preds, self.action_t, adam
+            self.reward, self.next_state, self.loss = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t
             )
+            with tf.variable_scope('Training'):
+                global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                optimizer = tf.train.AdamOptimizer(self.lr)
+                # if optimizer == None:
+                #     learning_rate = tf.train.inverse_time_decay(1., global_step, 1, 0.001, staircase=False, name="decay_lr")
+                #     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+                self.train_op = optimizer.minimize(self.loss, global_step=global_step)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)
@@ -116,7 +122,7 @@ class BackwardTabularQAgent(TabularQAgent):
     def get_best_config(self):
         return {
             'lr': 0.1
-            , 'discount': 0.99
+            , 'discount': 0.999
             , 'N0': 100
             , 'min_eps': 0.01
             , 'initial_q_value': 0
@@ -191,7 +197,7 @@ class TabularQERAgent(TabularQAgent):
     def get_best_config(self):
         return {
             'lr': 0.1
-            , 'discount': 0.99
+            , 'discount': 0.999
             , 'N0': 100
             , 'min_eps': 0.01
             , 'initial_q_value': 0
@@ -457,10 +463,17 @@ class TabularQOfflineERAgent(TabularQAgent):
                 self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
             )
 
-            adam = tf.train.AdamOptimizer(self.lr)
-            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
-                self.Qs, self.discount, self.q_preds, self.action_t, adam
+            self.reward, self.next_state, self.loss = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t
             )
+
+            with tf.variable_scope('Training'):
+                global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                optimizer = tf.train.AdamOptimizer(self.lr)
+                # if optimizer == None:
+                #     learning_rate = tf.train.inverse_time_decay(1., global_step, 1, 0.001, staircase=False, name="decay_lr")
+                #     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+                self.train_op = optimizer.minimize(self.loss, global_step=global_step)
 
             # Experienced replay part
             with tf.variable_scope('ExperienceReplay'):
@@ -588,10 +601,16 @@ class TabularFixedQOfflineERAgent(TabularQAgent):
                 self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
             )
 
-            adam = tf.train.AdamOptimizer(self.lr)
-            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
-                self.Qs, self.discount, self.q_preds, self.action_t, adam
+            self.reward, self.next_state, self.loss = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t
             )
+            with tf.variable_scope('Training'):
+                global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                optimizer = tf.train.AdamOptimizer(self.lr)
+                # if optimizer == None:
+                #     learning_rate = tf.train.inverse_time_decay(1., global_step, 1, 0.001, staircase=False, name="decay_lr")
+                #     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+                self.train_op = optimizer.minimize(self.loss, global_step=global_step)
 
             with tf.variable_scope('ExperienceReplay'):
                 with tf.variable_scope(fixed_q_scope, reuse=True):

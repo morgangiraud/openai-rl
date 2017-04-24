@@ -28,3 +28,9 @@ def make_agent(config, env):
         return globals()[config['agent_name']](config, env)
     else:
         raise Exception('The agent name %s does not exist' % config['agent_name'])
+
+def get_agent_class(config):
+    if config['agent_name'] in __all__:
+        return globals()[config['agent_name']]
+    else:
+        raise Exception('The agent name %s does not exist' % config['agent_name'])

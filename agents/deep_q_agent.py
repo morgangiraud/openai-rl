@@ -21,7 +21,7 @@ class DeepTDAgent(BasicAgent):
         self.min_eps = self.config['min_eps']
 
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N = tf.Variable(0., dtype=tf.float32, name='N', trainable=False)
@@ -65,10 +65,6 @@ class DeepTDAgent(BasicAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -83,7 +79,7 @@ class DeepTDAgent(BasicAgent):
 
         return (act, state)
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 
@@ -148,7 +144,7 @@ class DQNAgent(DeepTDAgent):
         self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
@@ -202,10 +198,6 @@ class DQNAgent(DeepTDAgent):
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
             self.timestep, self.inc_timestep_op = capacities.counter("timestep")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -220,7 +212,7 @@ class DQNAgent(DeepTDAgent):
 
         return (act, state)
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         score = 0
         av_loss = []
@@ -271,7 +263,7 @@ class DDQNAgent(DQNAgent):
     def get_best_config():
         pass
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
@@ -327,10 +319,6 @@ class DDQNAgent(DQNAgent):
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
             self.timestep, self.inc_timestep_op = capacities.counter("timestep")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -355,7 +343,7 @@ class DeepFixedQOfflineERAgent(DeepTDAgent):
         self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
@@ -423,10 +411,6 @@ class DeepFixedQOfflineERAgent(DeepTDAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -441,7 +425,7 @@ class DeepFixedQOfflineERAgent(DeepTDAgent):
 
         return (act, state)
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         score = 0
         av_loss = []

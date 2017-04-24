@@ -30,7 +30,7 @@ class DeepMCPolicyAgent(BasicAgent):
         }
 
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
@@ -58,10 +58,6 @@ class DeepMCPolicyAgent(BasicAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -76,7 +72,7 @@ class DeepMCPolicyAgent(BasicAgent):
 
         return (act, state)
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         score = 0
         historyType = np.dtype([('states', 'float32', (env.observation_space.shape[0] + 1,)), ('actions', 'int32', (1,)), ('rewards', 'float32')])
@@ -129,7 +125,7 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
         self.policy_lr = self.lr
         self.q_lr = self.lr
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
 
             # Model
@@ -184,17 +180,13 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 
@@ -252,7 +244,7 @@ class ActorCriticAgent(MCActorCriticAgent):
     """
     Agent implementing Actor critic using REINFORCE
     """
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
             # Model
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
@@ -307,17 +299,13 @@ class ActorCriticAgent(MCActorCriticAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 
@@ -374,7 +362,7 @@ class A2CAgent(ActorCriticAgent):
         }
         self.v_lr = self.lr
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
             # Model
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
@@ -455,17 +443,13 @@ class A2CAgent(ActorCriticAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 
@@ -525,7 +509,7 @@ class TDACAgent(DeepMCPolicyAgent):
         self.policy_lr = self.lr
         self.v_lr = self.lr
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
             # Model
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
@@ -582,17 +566,13 @@ class TDACAgent(DeepMCPolicyAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 

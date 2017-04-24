@@ -11,40 +11,21 @@ class TabularQAgent(BasicAgent):
         config.update(phis.getPhiConfig(config['env_name'], config['debug']))
         super(TabularQAgent, self).__init__(config, env)
 
-    def set_agent_props(self):
-        self.N0 = self.config['N0']
-        self.min_eps = self.config['min_eps']
-        self.initial_q_value = self.config['initial_q_value']
-
     def get_best_config(self):
         return {
             'lr': 0.1
-            , 'discount': 0.999
+            , 'discount': 0.99
             , 'N0': 100
             , 'min_eps': 0.01
             , 'initial_q_value': 0
         }
 
-    @staticmethod
-    def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
-        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
-        get_N0 = lambda: np.random.randint(1, 5e3)
-        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
-        get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
+    def set_agent_props(self):
+        self.N0 = self.config['N0']
+        self.min_eps = self.config['min_eps']
+        self.initial_q_value = self.config['initial_q_value']
 
-        random_config = {
-            'lr': get_lr()
-            , 'discount': get_discount()
-            , 'N0': get_N0()
-            , 'min_eps': get_min_eps()
-            , 'initial_q_value': get_initial_q_value()
-        }
-        random_config.update(fixed_params)
-
-        return random_config
-
-    def build_graph(self, graph):
+    def buildGraph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
@@ -62,16 +43,10 @@ class TabularQAgent(BasicAgent):
                 self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
             )
 
-            self.reward, self.next_state, self.loss = capacities.MSETabularQLearning(
-                self.Qs, self.discount, self.q_preds, self.action_t
+            adam = tf.train.AdamOptimizer(self.lr)
+            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t, adam
             )
-            with tf.variable_scope('Training'):
-                global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
-                optimizer = tf.train.AdamOptimizer(self.lr)
-                # if optimizer == None:
-                #     learning_rate = tf.train.inverse_time_decay(1., global_step, 1, 0.001, staircase=False, name="decay_lr")
-                #     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-                self.train_op = optimizer.minimize(self.loss, global_step=global_step)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)
@@ -80,6 +55,10 @@ class TabularQAgent(BasicAgent):
             self.all_summary_t = tf.summary.merge_all()
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
 
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
@@ -95,7 +74,7 @@ class TabularQAgent(BasicAgent):
 
         return act, state_id
 
-    def learn_from_episode(self, env, render=False):
+    def learnFromEpisode(self, env, render=False):
         obs = env.reset()
         score = 0
         av_loss = []
@@ -134,43 +113,22 @@ class BackwardTabularQAgent(TabularQAgent):
     """
     Agent implementing Backward TD(lambda) tabular Q-learning.
     """
-    def set_agent_props(self):
-        super(BackwardTabularQAgent, self).set_agent_props()
-
-        self.lambda_value = self.config['lambda']
-
     def get_best_config(self):
         return {
             'lr': 0.1
-            , 'discount': 0.999
+            , 'discount': 0.99
             , 'N0': 100
             , 'min_eps': 0.01
             , 'initial_q_value': 0
             , 'lambda': .9
         }
 
-    def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
-        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
-        get_N0 = lambda: np.random.randint(1, 5e3)
-        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
-        get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
-        get_lambda = lambda: np.random.random(1)[0]
+    def set_agent_props(self):
+        super(BackwardTabularQAgent, self).set_agent_props()
 
-        random_config = {
-            'lr': get_lr()
-            , 'discount': get_discount()
-            , 'N0': get_N0()
-            , 'min_eps': get_min_eps()
-            , 'initial_q_value': get_initial_q_value()
-            , 'lambda': get_lambda()
-        }
-        random_config.update(fixed_params)
+        self.lambda_value = self.config['lambda']
 
-        return random_config
-
-
-    def build_graph(self, graph):
+    def buildGraph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
@@ -211,21 +169,37 @@ class BackwardTabularQAgent(TabularQAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
+
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learn_from_episode(self, env, render=False):
+    def learnFromEpisode(self, env, render=False):
         self.sess.run(self.reset_et_op)
 
-        super(BackwardTabularQAgent, self).learn_from_episode(env, render)
+        super(BackwardTabularQAgent, self).learnFromEpisode(env, render)
 
 class TabularQERAgent(TabularQAgent):
     """
     Agent implementing tabular Q-learning with experience replay.
     """
+    def get_best_config(self):
+        return {
+            'lr': 0.1
+            , 'discount': 0.99
+            , 'N0': 100
+            , 'min_eps': 0.01
+            , 'initial_q_value': 0
+            , 'lambda': .9
+            , 'er_batch_size': 300
+            , 'er_rm_size': 20000
+        }
+
     def set_agent_props(self):
         super(TabularQERAgent, self).set_agent_props()
 
@@ -235,43 +209,7 @@ class TabularQERAgent(TabularQAgent):
         self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def get_best_config(self):
-        return {
-            'lr': 0.1
-            , 'discount': 0.999
-            , 'N0': 100
-            , 'min_eps': 0.01
-            , 'initial_q_value': 0
-            , 'lambda': .9
-            , 'er_batch_size': 300
-            , 'er_rm_size': 20000
-        }
-
-    def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
-        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
-        get_N0 = lambda: np.random.randint(1, 5e3)
-        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
-        get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
-        get_lambda = lambda: np.random.random(1)[0]
-        get_er_batch_size = lambda: np.random.randint(16, 1024)
-        get_er_rm_size = lambda: np.random.randint(1000, 50000)
-
-        random_config = {
-            'lr': get_lr()
-            , 'discount': get_discount()
-            , 'N0': get_N0()
-            , 'min_eps': get_min_eps()
-            , 'initial_q_value': get_initial_q_value()
-            , 'lambda': get_lambda()
-            , 'er_batch_size': get_er_batch_size()
-            , 'er_rm_size': get_er_rm_size()
-        }
-        random_config.update(fixed_params)
-
-        return random_config
-
-    def build_graph(self, graph):
+    def buildGraph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
@@ -315,13 +253,17 @@ class TabularQERAgent(TabularQAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
+
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learn_from_episode(self, env, render=False):
+    def learnFromEpisode(self, env, render=False):
         obs = env.reset()
         score = 0
         av_loss = []
@@ -366,41 +308,15 @@ class TabularFixedQERAgent(TabularQERAgent):
     """
     Agent implementing tabular Q-learning with experience replay and a second fixed network.
     """
+    def get_best_config(self):
+        return {}
+
     def __init__(self, config, env):
         super(TabularFixedQERAgent, self).__init__(config, env)
 
         self.er_every = config['er_every']
 
-    def get_best_config(self):
-        return {}
-
-    def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
-        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
-        get_N0 = lambda: np.random.randint(1, 5e3)
-        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
-        get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
-        get_lambda = lambda: np.random.random(1)[0]
-        get_er_batch_size = lambda: np.random.randint(16, 1024)
-        get_er_rm_size = lambda: np.random.randint(1000, 50000)
-        get_er_every = lambda: np.random.randint(1000, 50000)
-
-        random_config = {
-            'lr': get_lr()
-            , 'discount': get_discount()
-            , 'N0': get_N0()
-            , 'min_eps': get_min_eps()
-            , 'initial_q_value': get_initial_q_value()
-            , 'lambda': get_lambda()
-            , 'er_batch_size': get_er_batch_size()
-            , 'er_rm_size': get_er_rm_size()
-            , 'er_every': get_er_every()
-        }
-        random_config.update(fixed_params)
-
-        return random_config
-
-    def build_graph(self, graph):
+    def buildGraph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
@@ -452,13 +368,17 @@ class TabularFixedQERAgent(TabularQERAgent):
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
             self.event_count, self.inc_event_count_op = capacities.counter("event_count")
 
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
+
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learn_from_episode(self, env, render=False):
+    def learnFromEpisode(self, env, render=False):
         obs = env.reset()
         score = 0
         av_loss = []
@@ -519,7 +439,7 @@ class TabularQOfflineERAgent(TabularQAgent):
         self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def build_graph(self, graph):
+    def buildGraph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
@@ -537,17 +457,10 @@ class TabularQOfflineERAgent(TabularQAgent):
                 self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
             )
 
-            self.reward, self.next_state, self.loss = capacities.MSETabularQLearning(
-                self.Qs, self.discount, self.q_preds, self.action_t
+            adam = tf.train.AdamOptimizer(self.lr)
+            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t, adam
             )
-
-            with tf.variable_scope('Training'):
-                global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
-                optimizer = tf.train.AdamOptimizer(self.lr)
-                # if optimizer == None:
-                #     learning_rate = tf.train.inverse_time_decay(1., global_step, 1, 0.001, staircase=False, name="decay_lr")
-                #     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-                self.train_op = optimizer.minimize(self.loss, global_step=global_step)
 
             # Experienced replay part
             with tf.variable_scope('ExperienceReplay'):
@@ -573,7 +486,11 @@ class TabularQOfflineERAgent(TabularQAgent):
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")            
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
 
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
@@ -581,7 +498,7 @@ class TabularQOfflineERAgent(TabularQAgent):
 
         return graph
 
-    def learn_from_episode(self, env, render=False):
+    def learnFromEpisode(self, env, render=False):
         obs = env.reset()
         score = 0
         av_loss = []
@@ -649,7 +566,7 @@ class TabularFixedQOfflineERAgent(TabularQAgent):
         self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def build_graph(self, graph):
+    def buildGraph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
@@ -671,16 +588,10 @@ class TabularFixedQOfflineERAgent(TabularQAgent):
                 self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
             )
 
-            self.reward, self.next_state, self.loss = capacities.MSETabularQLearning(
-                self.Qs, self.discount, self.q_preds, self.action_t
+            adam = tf.train.AdamOptimizer(self.lr)
+            self.reward, self.next_state, self.loss, self.train_op = capacities.MSETabularQLearning(
+                self.Qs, self.discount, self.q_preds, self.action_t, adam
             )
-            with tf.variable_scope('Training'):
-                global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
-                optimizer = tf.train.AdamOptimizer(self.lr)
-                # if optimizer == None:
-                #     learning_rate = tf.train.inverse_time_decay(1., global_step, 1, 0.001, staircase=False, name="decay_lr")
-                #     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-                self.train_op = optimizer.minimize(self.loss, global_step=global_step)
 
             with tf.variable_scope('ExperienceReplay'):
                 with tf.variable_scope(fixed_q_scope, reuse=True):
@@ -710,13 +621,17 @@ class TabularFixedQOfflineERAgent(TabularQAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
+
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learn_from_episode(self, env, render=False):
+    def learnFromEpisode(self, env, render=False):
         obs = env.reset()
         score = 0
         av_loss = []
@@ -786,7 +701,7 @@ class BackwardTabularFixedQOfflineERAgent(TabularQAgent):
         self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def build_graph(self, graph):
+    def buildGraph(self, graph):
         with graph.as_default():
             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
 
@@ -848,13 +763,17 @@ class BackwardTabularFixedQOfflineERAgent(TabularQAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
+            self.saver = tf.train.Saver()
+
+            self.init_op = tf.global_variables_initializer()
+
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learn_from_episode(self, env, render=False):
+    def learnFromEpisode(self, env, render=False):
         obs = env.reset()
         score = 0
         av_loss = []

@@ -11,7 +11,7 @@
 #                       9     9         3     27        1     81
 #                       3     27        1     81
 #                       1     81
-import gym, os, shutil, re, multiprocessing, json
+import gym, os, shutil, re, multiprocessing, json, copy
 import concurrent.futures
 import numpy as np
 
@@ -23,14 +23,14 @@ from agents import make_agent
 
 dir = os.path.dirname(os.path.realpath(__file__))
 
-def execute_run(counter, func, n_iterations, t, dry_run):
+def execute_run(counter, func, n_iterations, t, main_config, dry_run):    
     start_time = time()
-    t['run'] = counter
+    main_config['run'] = counter
 
     if dry_run:
         result = { 'loss': random(), 'log_loss': random(), 'auc': random()}
     else:
-        result = func( n_iterations, t )   # <---
+        result = func( n_iterations, t, main_config )   # <---
 
     seconds = int( round( time() - start_time ))
     print("Run {} | {}".format(counter, ctime()))
@@ -68,7 +68,7 @@ class Hyperband:
             r = self.max_iter * self.eta ** ( -s )
 
             # n random configurations
-            T = [ self.get_params() for i in range( n )]
+            T = [ self.get_params(main_config['fixed_params']) for i in range( n )]
 
             for i in range(( s + 1 ) - int( skip_last )): # changed from s + 1
 
@@ -85,13 +85,12 @@ class Hyperband:
                 val_losses = []
                 early_stops = []
 
-                executor = concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), main_config['hb_nb_child']))
                 futures = []
-
-                for t in T:
-                    self.counter += 1
-                    futures.append(executor.submit(execute_run, self.counter, self.try_params, n_iterations, t, dry_run))
-                concurrent.futures.wait(futures)
+                with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), main_config['hb_nb_process'])) as executor:
+                    for t in T:
+                        self.counter += 1
+                        futures.append(executor.submit(execute_run, self.counter, self.try_params, n_iterations, t, main_config, dry_run))
+                    concurrent.futures.wait(futures)
 
                 for future in futures:
                     counter, result, n_iterations, t, seconds = future.result()
@@ -130,14 +129,14 @@ class Hyperband:
 
             results = sorted(self.results, key=lambda result: result['loss'])
             config = T[0]
-            with open(config['result_dir_prefix'] + '/hb_results.json', 'w') as f:
-                json.dump({'results': results, 'best_counter':self.best_counter}, f)
 
         return {'results': results, 'best_counter':self.best_counter}
 
-def run_params(nb_epoch, config):
-    config['max_iter'] = int(nb_epoch) * config['hb_games_per_epoch']
-    config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/run-' + str(config['run'])
+def run_params(nb_epoch, config, main_config):
+    config = copy.deepcopy(config)
+    config.update(main_config)
+    config['result_dir'] = main_config['result_dir_prefix'] + '/' + main_config['env_name'] + '/' + main_config['agent_name'] + '/run-' + str(main_config['run'])
+    config['max_iter'] = int(nb_epoch) * main_config['hb_games_per_epoch']
 
     # If we are reusing a configuration, we remove its folder before next training
     if os.path.exists(config['result_dir']):
@@ -146,8 +145,8 @@ def run_params(nb_epoch, config):
     # We create the agent
     env = gym.make(config['env_name'])
     agent = make_agent(config, env)
-
-    # We tran the agent
+    
+    # We train the agent
     agent.train()
     agent.save()
 
@@ -157,7 +156,7 @@ def run_params(nb_epoch, config):
 
     # We test the agent and get the mean score for metrics
     score = []
-    for i in range(500):
+    for i in range(5):
         score.append(agent.play(env, render=False))
     loss = - np.mean(score) # Hyperbands want a loss
 

@@ -85,7 +85,7 @@ def fixScope(from_scope):
 def policy(network_params, inputs):
     W1 = tf.get_variable('W1'
         , shape=[ network_params['nb_inputs'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_var'])
     )
     b1 = tf.get_variable('b1'
         , shape=[ network_params['nb_units'] ]
@@ -95,7 +95,7 @@ def policy(network_params, inputs):
 
     W2 = tf.get_variable('W2'
         , shape=[ network_params['nb_units'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_var'])
     )
     b2 = tf.get_variable('b2'
         , shape=[ network_params['nb_units'] ]
@@ -105,7 +105,7 @@ def policy(network_params, inputs):
 
     W3 = tf.get_variable('W3'
         , shape=[ network_params['nb_units'], network_params['nb_outputs'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_var'])
     )
     b3 = tf.get_variable('b3'
         , shape=[ network_params['nb_outputs'] ]
@@ -122,7 +122,7 @@ def policy(network_params, inputs):
 def value_f(network_params, inputs):
     W1 = tf.get_variable('W1'
         , shape=[ network_params['nb_inputs'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_var'])
     )
     b1 = tf.get_variable('b1'
         , shape=[ network_params['nb_units'] ]
@@ -133,7 +133,7 @@ def value_f(network_params, inputs):
 
     W2 = tf.get_variable('W2'
         , shape=[ network_params['nb_units'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_var'])
     )
     b2 = tf.get_variable('b2'
         , shape=[ network_params['nb_units'] ]
@@ -144,7 +144,7 @@ def value_f(network_params, inputs):
 
     W3 = tf.get_variable('W3'
         , shape=[ network_params['nb_units'], network_params['nb_outputs'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_var'])
     )
     b3 = tf.get_variable('b3'
         , shape=[ network_params['nb_outputs'] ]

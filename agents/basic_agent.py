@@ -8,6 +8,7 @@ class BasicAgent(object):
             config.update(self.get_best_config())
         self.config = config
 
+        self.random_seed = config['random_seed']
         self.result_dir = config['result_dir']
         self.max_iter = config['max_iter']
 
@@ -26,50 +27,62 @@ class BasicAgent(object):
         self.lr = config['lr']
         self.discount = config['discount']
 
+        # Set custom properties of the agent
         self.set_agent_props()
 
         # Play part
         self.play_counter = 0
 
         # Graph part
-        self.graph = self.buildGraph(tf.Graph())
+        self.graph = self.build_graph(tf.Graph())
 
-        # For tabular use, no need for a lot of GPU
+        # Misc
+        with self.graph.as_default():
+            self.saver = tf.train.Saver(
+                max_to_keep=50,
+            )
+            self.init_op = tf.global_variables_initializer()
+
         gpu_options = tf.GPUOptions(allow_growth=True)
         sessConfig = tf.ConfigProto(gpu_options=gpu_options)
         self.sess = tf.Session(config=sessConfig, graph=self.graph)
         self.sw = tf.summary.FileWriter(self.result_dir, self.sess.graph)
         self.init()
 
-    def get_best_config(self):
-        return {}
-
     def set_agent_props(self):
         pass
 
-    def buildGraph(self, graph):
-        raise Exception('The buildGraph function must be overrided by the agent')
+    def get_best_config(self):
+        return {}
+
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        raise Exception('The get_random_config function must be overrided by the agent')
+
+    def build_graph(self, graph):
+        raise Exception('The build_graph function must be overrided by the agent')
 
     def act(self, obs, eps=None):
-        pass
+        raise Exception('The act function must be overrided by the agent')
 
-    def learnFromEpisode(self, env):
-        pass
+    def learn_from_episode(self, env):
+        raise Exception('The learn_from_episode function must be overrided by the agent')
 
     def train(self, render=False):
         for episode_id in range(0, self.max_iter):
-            self.learnFromEpisode(self.env, render)
+            self.learn_from_episode(self.env, render)
+
+            if episode_id % 49 == 0: # Every 50 training episode
+                self.save()
 
     def save(self):
         global_step_t = tf.train.get_global_step(self.graph)
-        global_step = tf.train.global_step(self.sess, global_step_t)
+        global_step, episode_id = self.sess.run([global_step_t, self.episode_id])
         if self.config['debug']:
             print('Saving to %s with global_step %d' % (self.result_dir, global_step))
-        self.saver.save(self.sess, self.result_dir + '/agent', global_step)
+        self.saver.save(self.sess, self.result_dir + '/agent-ep_' + str(episode_id), global_step)
 
         if not os.path.isfile(self.result_dir + '/config.json'):
-            if self.config['debug']:
-                print('Saving configuration')
             config = self.config
             if 'phi' in config:
                 del config['phi']
@@ -82,6 +95,7 @@ class BasicAgent(object):
         if checkpoint is None:
             self.sess.run(self.init_op)
         else:
+
             if self.config['debug']:
                 print('Loading the model from folder: %s' % self.result_dir)
             self.saver.restore(self.sess, checkpoint.model_checkpoint_path)

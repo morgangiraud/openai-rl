@@ -7,27 +7,53 @@ class DeepTDAgent(BasicAgent):
     """
     Agent implementing 2-layer NN Q-learning, using experience TD 0
     """
-    def get_best_config(self):
-        pass
 
     def set_agent_props(self):
         self.q_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': self.action_space.n
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_var': self.config['initial_var']
         }
 
         self.N0 = self.config['N0']
         self.min_eps = self.config['min_eps']
 
+    def get_best_config(self):
+        return {}
 
-    def buildGraph(self, graph):
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_N0 = lambda: np.random.randint(1, 5e3)
+        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_nb_units = lambda: np.random.randint(10, 100)
+        get_initial_mean = lambda: 0
+        get_initial_var = lambda: 5e-1 * np.random.random(1)[0]
+
+        random_config = {
+            'lr': get_lr()
+            , 'discount': get_discount()
+            , 'N0': get_N0()
+            , 'min_eps': get_min_eps()
+            , 'nb_units': get_nb_units()
+            , 'initial_mean': get_initial_mean()
+            , 'initial_var': get_initial_var()
+        }
+        random_config.update(fixed_params)
+
+        return random_config
+
+    def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N = tf.Variable(0., dtype=tf.float32, name='N', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
 
-            # Model
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
@@ -65,10 +91,6 @@ class DeepTDAgent(BasicAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -83,7 +105,7 @@ class DeepTDAgent(BasicAgent):
 
         return (act, state)
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 
@@ -125,19 +147,6 @@ class DQNAgent(DeepTDAgent):
     """
     Agent implementing The DQN (Experience replay abd fixed Q-Net).
     """
-    def get_best_config(self):
-        return {
-            'lr': 1e-3
-            , 'nb_units': 50
-            , 'discount': 0.99
-            , 'N0': 100
-            , 'min_eps': 0.01
-            , 'er_every': 20
-            , 'er_batch_size': 300
-            , 'er_epoch_size': 50
-            , 'er_rm_size': 20000
-        }
-
     def set_agent_props(self):
         super(DQNAgent, self).set_agent_props()
 
@@ -145,11 +154,60 @@ class DQNAgent(DeepTDAgent):
         self.er_batch_size = self.config['er_batch_size']
         self.er_epoch_size = self.config['er_epoch_size']
         self.er_rm_size = self.config['er_rm_size']
+        
         self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def buildGraph(self, graph):
+    def get_best_config(self):
+        return {
+            'lr': 1e-3
+            , 'nb_units': 50
+            , 'discount': 0.99
+            , 'N0': 100
+            , 'min_eps': 0.01
+            , 'initial_mean': 0.
+            , 'initial_var': 1e-2
+            , 'er_every': 20
+            , 'er_batch_size': 300
+            , 'er_epoch_size': 50
+            , 'er_rm_size': 20000
+        }
+
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_N0 = lambda: np.random.randint(1, 5e3)
+        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_nb_units = lambda: np.random.randint(10, 100)
+        get_initial_mean = lambda: 0
+        get_initial_var = lambda: 5e-1 * np.random.random(1)[0]
+        get_er_batch_size = lambda: np.random.randint(16, 1024)
+        get_er_rm_size = lambda: np.random.randint(1000, 50000)
+        get_er_every = lambda: np.random.randint(1000, 50000)
+        get_er_epoch_size = lambda: np.random.randint(1, 100)
+
+        random_config = {
+            'lr': get_lr()
+            , 'nb_units': get_nb_units()
+            , 'discount': get_discount()
+            , 'N0': get_N0()
+            , 'min_eps': get_min_eps()
+            , 'initial_mean': get_initial_mean()
+            , 'initial_var': get_initial_var()
+            , 'er_batch_size': get_er_batch_size()
+            , 'er_rm_size': get_er_rm_size()
+            , 'er_every': get_er_every()
+            , 'er_epoch_size': get_er_epoch_size()
+        }
+        random_config.update(fixed_params)
+
+        return random_config
+
+    def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
@@ -202,10 +260,6 @@ class DQNAgent(DeepTDAgent):
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
             self.timestep, self.inc_timestep_op = capacities.counter("timestep")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -220,7 +274,7 @@ class DQNAgent(DeepTDAgent):
 
         return (act, state)
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         score = 0
         av_loss = []
@@ -267,12 +321,25 @@ class DDQNAgent(DQNAgent):
     """
     Agent implementing The DDQN
     """
-    # Best: # Best: {'agent_name': 'DQNAgent', 'max_iter': 2000, 'lr': 0.001, 'nb_units': 50.0, 'discount': 0.99, 'N0': 100, 'min_eps': 0.01, 'er_every': 20, 'er_batch_size': 300, 'er_epoch_size': 50, 'er_rm_size': 20000, 'env_name': 'CartPole-v0'}
     def get_best_config():
-        pass
+        return {
+            'lr': 0.001
+            , 'nb_units': 50.0
+            , 'discount': 0.99
+            , 'N0': 100
+            , 'min_eps': 0.01
+            , 'initial_mean': 0.
+            , 'initial_var': 1e-2
+            , 'er_every': 20
+            , 'er_batch_size': 300
+            , 'er_epoch_size': 50
+            , 'er_rm_size': 20000
+        }
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
@@ -327,36 +394,23 @@ class DDQNAgent(DQNAgent):
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
             self.timestep, self.inc_timestep_op = capacities.counter("timestep")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-class DeepFixedQOfflineERAgent(DeepTDAgent):
+class DeepFixedQOfflineERAgent(DQNAgent):
     """
     Agent implementing 2-layer NN Q-learning, using experience replay, fixed Q Network and TD(0).
     """
     def get_best_config(self):
         pass
 
-    def set_agent_props(self):
-        super(DeepFixedQOfflineERAgent, self).set_agent_props()
-
-        self.er_every = self.config['er_every']
-        self.er_batch_size = self.config['er_batch_size']
-        self.er_epoch_size = self.config['er_epoch_size']
-        self.er_rm_size = self.config['er_rm_size']
-
-        self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
-        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
-
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
@@ -423,25 +477,13 @@ class DeepFixedQOfflineERAgent(DeepTDAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def act(self, obs):
-        state = np.concatenate((obs, [0]))
-        act = self.sess.run(self.action_t, feed_dict={
-            self.inputs: [ state ]
-        })
-
-        return (act, state)
-
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         score = 0
         av_loss = []

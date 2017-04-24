@@ -15,23 +15,48 @@ class DeepMCPolicyAgent(BasicAgent):
     """
     Agent implementing Policy gradient using Monte-Carlo control
     """
-    def get_best_config(self):
-        return {
-            'lr': 1e-3
-            , 'discount': 0.99
-            , 'nb_units': 50
-        }
-
     def set_agent_props(self):
         self.policy_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': self.action_space.n
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_var': self.config['initial_var']
         }
 
+    def get_best_config(self):
+        return {
+            'lr': 1e-3
+            , 'discount': 0.99
+            , 'nb_units': 50
+            , 'initial_mean': 0.
+            , 'initial_var': 1e-2
+        }
 
-    def buildGraph(self, graph):
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_nb_units = lambda: np.random.randint(10, 100)
+        get_initial_mean = lambda: 0
+        get_initial_var = lambda: 5e-1 * np.random.random(1)[0]
+
+        random_config = {
+            'lr': get_lr()
+            , 'nb_units': get_nb_units()
+            , 'discount': get_discount()
+            , 'initial_mean': get_initial_mean()
+            , 'initial_var': get_initial_var()
+        }
+        random_config.update(fixed_params)
+
+        return random_config    
+
+
+    def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -58,10 +83,6 @@ class DeepMCPolicyAgent(BasicAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -76,7 +97,7 @@ class DeepMCPolicyAgent(BasicAgent):
 
         return (act, state)
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         score = 0
         historyType = np.dtype([('states', 'float32', (env.observation_space.shape[0] + 1,)), ('actions', 'int32', (1,)), ('rewards', 'float32')])
@@ -125,14 +146,16 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': self.action_space.n
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_var': self.config['initial_var']
         }
         self.policy_lr = self.lr
         self.q_lr = self.lr
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
 
-            # Model
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -184,17 +207,13 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 
@@ -252,9 +271,10 @@ class ActorCriticAgent(MCActorCriticAgent):
     """
     Agent implementing Actor critic using REINFORCE
     """
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
-            # Model
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -307,17 +327,13 @@ class ActorCriticAgent(MCActorCriticAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 
@@ -371,12 +387,15 @@ class A2CAgent(ActorCriticAgent):
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': 1
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_var': self.config['initial_var']
         }
         self.v_lr = self.lr
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
-            # Model
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -455,17 +474,13 @@ class A2CAgent(ActorCriticAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 
@@ -521,13 +536,16 @@ class TDACAgent(DeepMCPolicyAgent):
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': 1
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_var': self.config['initial_var']
         }
         self.policy_lr = self.lr
         self.v_lr = self.lr
 
-    def buildGraph(self, graph):
+    def build_graph(self, graph):
         with graph.as_default():
-            # Model
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -582,17 +600,13 @@ class TDACAgent(DeepMCPolicyAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            self.saver = tf.train.Saver()
-
-            self.init_op = tf.global_variables_initializer()
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
 
-    def learnFromEpisode(self, env, render):
+    def learn_from_episode(self, env, render):
         obs = env.reset()
         act, _ = self.act(obs)
 

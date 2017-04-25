@@ -47,11 +47,12 @@ class DeepTDAgent(BasicAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.N0_t = tf.constant(self.N0, tf.float32, name='N_0')
             self.N = tf.Variable(0., dtype=tf.float32, name='N', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
 
-            # Model
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
@@ -163,7 +164,7 @@ class DQNAgent(DeepTDAgent):
             , 'discount': 0.99
             , 'N0': 100
             , 'min_eps': 0.01
-            , 'initial_mean': 0
+            , 'initial_mean': 0.
             , 'initial_stddev': 1e-2
             , 'er_every': 20
             , 'er_batch_size': 300
@@ -201,10 +202,11 @@ class DQNAgent(DeepTDAgent):
         random_config.update(fixed_params)
 
         return random_config
-    
 
     def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
@@ -325,7 +327,7 @@ class DDQNAgent(DQNAgent):
             , 'discount': 0.99
             , 'N0': 100
             , 'min_eps': 0.01
-            , 'initial_mean': 0
+            , 'initial_mean': 0.
             , 'initial_stddev': 1e-2
             , 'er_every': 20
             , 'er_batch_size': 300
@@ -335,6 +337,8 @@ class DDQNAgent(DQNAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
@@ -404,6 +408,8 @@ class DeepFixedQOfflineERAgent(DQNAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
@@ -475,14 +481,6 @@ class DeepFixedQOfflineERAgent(DQNAgent):
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
-
-    def act(self, obs):
-        state = np.concatenate((obs, [0]))
-        act = self.sess.run(self.action_t, feed_dict={
-            self.inputs: [ state ]
-        })
-
-        return (act, state)
 
     def learn_from_episode(self, env, render):
         obs = env.reset()

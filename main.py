@@ -1,4 +1,4 @@
-import gym, os, time, json
+import gym, os, time, json, random, sys
 import tensorflow as tf
 import numpy as np
 
@@ -50,7 +50,7 @@ flags.DEFINE_string('result_dir', dir + '/results/' + flags.FLAGS.env_name + '/'
 
 flags.DEFINE_boolean('play', False, 'Load an agent for playing')
 flags.DEFINE_boolean('play_nb', 10, 'Number of games to play')
-# flags.DEFINE_integer('random_seed', 123, 'Value of random seed')
+flags.DEFINE_integer('random_seed', random.randint(0, sys.maxsize), 'Value of random seed')
 
 def main(_):
     config = flags.FLAGS.__flags.copy()
@@ -72,7 +72,7 @@ def main(_):
 
     elif config['full_search']:
         print('*** Starting full search')
-        config['result_dir_prefix'] = dir + '/results/full_search/' + str(int(time.time()))
+        config['result_dir_prefix'] = dir + '/results/full_search/' + str(int(time.time())) + '-' + config['agent_name']
         os.makedirs(config['result_dir_prefix'])
         
         print('*** Starting first pass: full hyperband search')

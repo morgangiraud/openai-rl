@@ -11,6 +11,7 @@ class BasicAgent(object):
         if config['debug']:
             print('config', config)
 
+        self.random_seed = config['random_seed']
         self.result_dir = config['result_dir']
         self.max_iter = config['max_iter']
 

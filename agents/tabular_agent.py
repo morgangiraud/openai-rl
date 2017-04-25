@@ -46,8 +46,9 @@ class TabularQAgent(BasicAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
-            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            tf.set_random_seed(self.random_seed)
 
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
                 self.Qs = tf.get_variable('Qs'
@@ -170,12 +171,13 @@ class BackwardTabularQAgent(TabularQAgent):
 
         return random_config
 
-
     def build_graph(self, graph):
         with graph.as_default():
-            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            tf.set_random_seed(self.random_seed)
 
-            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            
+            q_scope = tf.VariableScope(reuse=False, name='QValues')            
             with tf.variable_scope(q_scope):
                 self.Qs = tf.get_variable('Qs'
                     , shape=[self.nb_state, self.action_space.n]
@@ -272,9 +274,11 @@ class TabularQERAgent(TabularQAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
-            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            tf.set_random_seed(self.random_seed)
 
-            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            
+            q_scope = tf.VariableScope(reuse=False, name='QValues')            
             with tf.variable_scope(q_scope):
                 self.Qs = tf.get_variable('Qs'
                     , shape=[self.nb_state, self.action_space.n]
@@ -400,9 +404,11 @@ class TabularFixedQERAgent(TabularQERAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
-            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            tf.set_random_seed(self.random_seed)
 
-            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            
+            q_scope = tf.VariableScope(reuse=False, name='QValues')            
             with tf.variable_scope(q_scope):
                 self.Qs = tf.get_variable('Qs'
                     , shape=[self.nb_state, self.action_space.n]
@@ -515,7 +521,7 @@ class TabularQOfflineERAgent(TabularQAgent):
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
     def get_best_config(self):
-        pass
+        return {}
 
     @staticmethod
     def get_random_config(fixed_params={}):
@@ -546,9 +552,11 @@ class TabularQOfflineERAgent(TabularQAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
-            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            tf.set_random_seed(self.random_seed)
 
-            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            
+            q_scope = tf.VariableScope(reuse=False, name='QValues')            
             with tf.variable_scope(q_scope):
                 self.Qs = tf.get_variable('Qs'
                     , shape=[self.nb_state, self.action_space.n]
@@ -661,13 +669,15 @@ class TabularFixedQOfflineERAgent(TabularQOfflineERAgent):
     Agent implementing tabular Q-learning with offline experience replay and a second fixed network.
     """        
     def get_best_config(self):
-        pass
+        return {}
 
     def build_graph(self, graph):
         with graph.as_default():
-            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            tf.set_random_seed(self.random_seed)
 
-            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            
+            q_scope = tf.VariableScope(reuse=False, name='QValues')            
             with tf.variable_scope(q_scope):
                 self.Qs = tf.get_variable('Qs'
                     , shape=[self.nb_state, self.action_space.n]
@@ -792,7 +802,7 @@ class BackwardTabularFixedQOfflineERAgent(TabularQOfflineERAgent):
         self.lambda_value = self.config['lambda']
 
     def get_best_config(self):
-        pass
+        return {}
 
     @staticmethod
     def get_random_config(fixed_params={}):
@@ -823,9 +833,11 @@ class BackwardTabularFixedQOfflineERAgent(TabularQOfflineERAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
-            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            tf.set_random_seed(self.random_seed)
 
-            q_scope = tf.VariableScope(reuse=False, name='QValues')
+            self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+            
+            q_scope = tf.VariableScope(reuse=False, name='QValues')            
             with tf.variable_scope(q_scope):
                 self.Qs = tf.get_variable('Qs'
                     , shape=[self.nb_state, self.action_space.n]

@@ -52,9 +52,10 @@ class DeepMCPolicyAgent(BasicAgent):
 
         return random_config
 
-
     def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -152,8 +153,8 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
+            tf.set_random_seed(self.random_seed)
 
-            # Model
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -271,7 +272,8 @@ class ActorCriticAgent(MCActorCriticAgent):
     """
     def build_graph(self, graph):
         with graph.as_default():
-            # Model
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -391,7 +393,8 @@ class A2CAgent(ActorCriticAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
-            # Model
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
@@ -540,7 +543,8 @@ class TDACAgent(DeepMCPolicyAgent):
 
     def build_graph(self, graph):
         with graph.as_default():
-            # Model
+            tf.set_random_seed(self.random_seed)
+
             self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')

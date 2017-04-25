@@ -149,6 +149,7 @@ class BackwardTabularQAgent(TabularQAgent):
             , 'lambda': .9
         }
 
+    @staticmethod
     def get_random_config(fixed_params={}):
         get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
@@ -242,18 +243,17 @@ class TabularQERAgent(TabularQAgent):
             , 'N0': 100
             , 'min_eps': 0.01
             , 'initial_q_value': 0
-            , 'lambda': .9
             , 'er_batch_size': 300
             , 'er_rm_size': 20000
         }
 
+    @staticmethod
     def get_random_config(fixed_params={}):
         get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
-        get_lambda = lambda: np.random.random(1)[0]
         get_er_batch_size = lambda: np.random.randint(16, 1024)
         get_er_rm_size = lambda: np.random.randint(1000, 50000)
 
@@ -263,7 +263,6 @@ class TabularQERAgent(TabularQAgent):
             , 'N0': get_N0()
             , 'min_eps': get_min_eps()
             , 'initial_q_value': get_initial_q_value()
-            , 'lambda': get_lambda()
             , 'er_batch_size': get_er_batch_size()
             , 'er_rm_size': get_er_rm_size()
         }
@@ -374,13 +373,13 @@ class TabularFixedQERAgent(TabularQERAgent):
     def get_best_config(self):
         return {}
 
+    @staticmethod
     def get_random_config(fixed_params={}):
         get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
-        get_lambda = lambda: np.random.random(1)[0]
         get_er_batch_size = lambda: np.random.randint(16, 1024)
         get_er_rm_size = lambda: np.random.randint(1000, 50000)
         get_er_every = lambda: np.random.randint(1000, 50000)
@@ -391,7 +390,6 @@ class TabularFixedQERAgent(TabularQERAgent):
             , 'N0': get_N0()
             , 'min_eps': get_min_eps()
             , 'initial_q_value': get_initial_q_value()
-            , 'lambda': get_lambda()
             , 'er_batch_size': get_er_batch_size()
             , 'er_rm_size': get_er_rm_size()
             , 'er_every': get_er_every()
@@ -505,9 +503,6 @@ class TabularQOfflineERAgent(TabularQAgent):
     """
     Agent implementing tabular Q-learning with offline experience replay.
     """
-    def get_best_config(self):
-        pass
-
     def set_agent_props(self):
         super(TabularQOfflineERAgent, self).set_agent_props()
 
@@ -518,6 +513,36 @@ class TabularQOfflineERAgent(TabularQAgent):
 
         self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
+
+    def get_best_config(self):
+        pass
+
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_N0 = lambda: np.random.randint(1, 5e3)
+        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
+        get_er_epoch_size = lambda: np.random.randint(5, 100)
+        get_er_batch_size = lambda: np.random.randint(16, 1024)
+        get_er_rm_size = lambda: np.random.randint(1000, 50000)
+        get_er_every = lambda: np.random.randint(1000, 50000)
+
+        random_config = {
+            'lr': get_lr()
+            , 'discount': get_discount()
+            , 'N0': get_N0()
+            , 'min_eps': get_min_eps()
+            , 'initial_q_value': get_initial_q_value()
+            , 'er_epoch_size': get_er_epoch_size()
+            , 'er_batch_size': get_er_batch_size()
+            , 'er_rm_size': get_er_rm_size()
+            , 'er_every': get_er_every()
+        }
+        random_config.update(fixed_params)
+
+        return random_config
 
     def build_graph(self, graph):
         with graph.as_default():
@@ -631,23 +656,12 @@ class TabularQOfflineERAgent(TabularQAgent):
 
         return
 
-class TabularFixedQOfflineERAgent(TabularQAgent):
+class TabularFixedQOfflineERAgent(TabularQOfflineERAgent):
     """
     Agent implementing tabular Q-learning with offline experience replay and a second fixed network.
-    """
+    """        
     def get_best_config(self):
         pass
-
-    def set_agent_props(self):
-        super(TabularFixedQOfflineERAgent, self).set_agent_props()
-
-        self.er_every = self.config['er_every']
-        self.er_batch_size = self.config['er_batch_size']
-        self.er_epoch_size = self.config['er_epoch_size']
-        self.er_rm_size = self.config['er_rm_size']
-
-        self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
-        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
     def build_graph(self, graph):
         with graph.as_default():
@@ -768,23 +782,44 @@ class TabularFixedQOfflineERAgent(TabularQAgent):
 
         return
 
-class BackwardTabularFixedQOfflineERAgent(TabularQAgent):
+class BackwardTabularFixedQOfflineERAgent(TabularQOfflineERAgent):
     """
     Agent implementing tabular Q-learning with offline experience replay and a second fixed network + eligibility traces.
     """
-    def get_best_config(self):
-        pass
-
     def set_agent_props(self):
         super(BackwardTabularFixedQOfflineERAgent, self).set_agent_props()
 
-        self.er_every = self.config['er_every']
-        self.er_batch_size = self.config['er_batch_size']
-        self.er_epoch_size = self.config['er_epoch_size']
-        self.er_rm_size = self.config['er_rm_size']
+        self.lambda_value = self.config['lambda']
 
-        self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
-        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
+    def get_best_config(self):
+        pass
+
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_N0 = lambda: np.random.randint(1, 5e3)
+        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
+        get_lambda = lambda: np.random.random(1)[0]
+        get_er_batch_size = lambda: np.random.randint(16, 1024)
+        get_er_rm_size = lambda: np.random.randint(1000, 50000)
+        get_er_every = lambda: np.random.randint(1000, 50000)
+
+        random_config = {
+            'lr': get_lr()
+            , 'discount': get_discount()
+            , 'N0': get_N0()
+            , 'min_eps': get_min_eps()
+            , 'initial_q_value': get_initial_q_value()
+            , 'lambda': get_lambda()
+            , 'er_batch_size': get_er_batch_size()
+            , 'er_rm_size': get_er_rm_size()
+            , 'er_every': get_er_every()
+        }
+        random_config.update(fixed_params)
+
+        return random_config
 
     def build_graph(self, graph):
         with graph.as_default():

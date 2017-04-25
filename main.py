@@ -24,6 +24,8 @@ flags.DEFINE_integer('hb_games_per_epoch', 100, 'Number of parallel process to p
 flags.DEFINE_string('agent_name', 'DQNAgent', 'Name of the agent')
 flags.DEFINE_boolean('best', False, 'Use the best known configuration')
 flags.DEFINE_float('initial_q_value', 0., 'Initial Q values in the Tabular case')
+flags.DEFINE_float('initial_mean', 0., 'Initial mean for NN')
+flags.DEFINE_float('initial_stddev', 1e-2, 'Initial standard deviation for NN')
 flags.DEFINE_float('lambda', .9, 'Lambda parameters used with eligibility traces')
 flags.DEFINE_float('discount', .999, 'Discount factor')
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')

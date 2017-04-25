@@ -15,19 +15,42 @@ class DeepMCPolicyAgent(BasicAgent):
     """
     Agent implementing Policy gradient using Monte-Carlo control
     """
-    def get_best_config(self):
-        return {
-            'lr': 1e-3
-            , 'discount': 0.99
-            , 'nb_units': 50
-        }
-
     def set_agent_props(self):
         self.policy_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': self.action_space.n
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_stddev': self.config['initial_stddev']
         }
+
+    def get_best_config(self):
+        return {
+            'lr': 1e-3
+            , 'discount': 0.99
+            , 'nb_units': 50
+            , 'initial_mean': 0.
+            , 'initial_stddev': 1e-2
+        }
+
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_nb_units = lambda: np.random.randint(10, 100)
+        get_initial_mean = lambda: 0
+        get_initial_stddev = lambda: 5e-1 * np.random.random(1)[0]
+
+        random_config = {
+            'lr': get_lr()
+            , 'discount': get_discount()
+            , 'nb_units': get_nb_units()
+            , 'initial_mean': get_initial_mean()
+            , 'initial_stddev': get_initial_stddev()
+        }
+        random_config.update(fixed_params)
+
+        return random_config
 
 
     def build_graph(self, graph):
@@ -121,6 +144,8 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': self.action_space.n
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_stddev': self.config['initial_stddev']
         }
         self.policy_lr = self.lr
         self.q_lr = self.lr
@@ -359,6 +384,8 @@ class A2CAgent(ActorCriticAgent):
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': 1
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_stddev': self.config['initial_stddev']
         }
         self.v_lr = self.lr
 
@@ -505,6 +532,8 @@ class TDACAgent(DeepMCPolicyAgent):
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': 1
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_stddev': self.config['initial_stddev']
         }
         self.policy_lr = self.lr
         self.v_lr = self.lr

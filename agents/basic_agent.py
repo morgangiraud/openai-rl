@@ -8,6 +8,9 @@ class BasicAgent(object):
             config.update(self.get_best_config())
         self.config = config
 
+        if config['debug']:
+            print('config', config)
+
         self.result_dir = config['result_dir']
         self.max_iter = config['max_iter']
 

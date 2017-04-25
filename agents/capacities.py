@@ -83,34 +83,48 @@ def fixScope(from_scope):
 
 
 def policy(network_params, inputs):
+    reusing_scope = tf.get_variable_scope().reuse
+    
     W1 = tf.get_variable('W1'
         , shape=[ network_params['nb_inputs'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
     )
+    if reusing_scope is False:
+        tf.summary.histogram('W1', W1)
     b1 = tf.get_variable('b1'
         , shape=[ network_params['nb_units'] ]
         , initializer=tf.zeros_initializer()
     )
+    if reusing_scope is False:
+        tf.summary.histogram('b1', b1)
     a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
 
     W2 = tf.get_variable('W2'
         , shape=[ network_params['nb_units'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
     )
+    if reusing_scope is False:
+        tf.summary.histogram('W2', W2)
     b2 = tf.get_variable('b2'
         , shape=[ network_params['nb_units'] ]
         , initializer=tf.zeros_initializer()
     )
+    if reusing_scope is False:
+        tf.summary.histogram('b2', b2)
     a2 = tf.nn.relu(tf.matmul(a1, W2) + b2)
 
     W3 = tf.get_variable('W3'
         , shape=[ network_params['nb_units'], network_params['nb_outputs'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
     )
+    if reusing_scope is False:
+        tf.summary.histogram('W3', W3)
     b3 = tf.get_variable('b3'
         , shape=[ network_params['nb_outputs'] ]
         , initializer=tf.zeros_initializer()
     )
+    if reusing_scope is False:
+        tf.summary.histogram('b3', b3)
     logits = tf.matmul(a2, W3) + b3
     probs_t = tf.nn.softmax(logits)
 
@@ -120,36 +134,49 @@ def policy(network_params, inputs):
 
 
 def value_f(network_params, inputs):
+    reusing_scope = tf.get_variable_scope().reuse
+
     W1 = tf.get_variable('W1'
         , shape=[ network_params['nb_inputs'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
     )
+    if reusing_scope is False:
+        tf.summary.histogram('W1', W1)
     b1 = tf.get_variable('b1'
         , shape=[ network_params['nb_units'] ]
         , initializer=tf.zeros_initializer()
     )
+    if reusing_scope is False:
+        tf.summary.histogram('b1', b1)
     a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
     # a1 = tf.matmul(inputs, W1) + b1
 
     W2 = tf.get_variable('W2'
         , shape=[ network_params['nb_units'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
     )
+    if reusing_scope is False:
+        tf.summary.histogram('W2', W2)
     b2 = tf.get_variable('b2'
         , shape=[ network_params['nb_units'] ]
         , initializer=tf.zeros_initializer()
     )
+    if reusing_scope is False:
+        tf.summary.histogram('b2', b2)
     a2 = tf.nn.relu(tf.matmul(a1, W2) + b2)
-    # a2 = tf.matmul(a1, W2) + b2
 
     W3 = tf.get_variable('W3'
         , shape=[ network_params['nb_units'], network_params['nb_outputs'] ]
-        , initializer=tf.random_normal_initializer(stddev=1e-2)
+        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
     )
+    if reusing_scope is False:
+        tf.summary.histogram('W3', W3)
     b3 = tf.get_variable('b3'
         , shape=[ network_params['nb_outputs'] ]
         , initializer=tf.zeros_initializer()
     )
+    if reusing_scope is False:
+        tf.summary.histogram('b3', b3)
     values = tf.matmul(a2, W3) + b3
 
     return values

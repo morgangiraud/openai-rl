@@ -7,19 +7,43 @@ class DeepTDAgent(BasicAgent):
     """
     Agent implementing 2-layer NN Q-learning, using experience TD 0
     """
-    def get_best_config(self):
-        pass
-
     def set_agent_props(self):
         self.q_params = {
             'nb_inputs': self.observation_space.shape[0] + 1
             , 'nb_units': self.config['nb_units']
             , 'nb_outputs': self.action_space.n
+            , 'initial_mean': self.config['initial_mean']
+            , 'initial_stddev': self.config['initial_stddev']
         }
 
         self.N0 = self.config['N0']
         self.min_eps = self.config['min_eps']
 
+    def get_best_config(self):
+        return {}
+
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_nb_units = lambda: np.random.randint(10, 100)
+        get_N0 = lambda: np.random.randint(1, 5e3)
+        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_initial_mean = lambda: 0
+        get_initial_stddev = lambda: 5e-1 * np.random.random(1)[0]
+
+        random_config = {
+            'lr': get_lr()
+            , 'discount': get_discount()
+            , 'nb_units': get_nb_units()
+            , 'N0': get_N0()
+            , 'min_eps': get_min_eps()
+            , 'initial_mean': get_initial_mean()
+            , 'initial_stddev': get_initial_stddev()
+        }
+        random_config.update(fixed_params)
+
+        return random_config
 
     def build_graph(self, graph):
         with graph.as_default():
@@ -121,19 +145,6 @@ class DQNAgent(DeepTDAgent):
     """
     Agent implementing The DQN (Experience replay abd fixed Q-Net).
     """
-    def get_best_config(self):
-        return {
-            'lr': 1e-3
-            , 'nb_units': 50
-            , 'discount': 0.99
-            , 'N0': 100
-            , 'min_eps': 0.01
-            , 'er_every': 20
-            , 'er_batch_size': 300
-            , 'er_epoch_size': 50
-            , 'er_rm_size': 20000
-        }
-
     def set_agent_props(self):
         super(DQNAgent, self).set_agent_props()
 
@@ -141,8 +152,56 @@ class DQNAgent(DeepTDAgent):
         self.er_batch_size = self.config['er_batch_size']
         self.er_epoch_size = self.config['er_epoch_size']
         self.er_rm_size = self.config['er_rm_size']
+
         self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
+
+    def get_best_config(self):
+        return {
+            'lr': 1e-3
+            , 'nb_units': 50
+            , 'discount': 0.99
+            , 'N0': 100
+            , 'min_eps': 0.01
+            , 'initial_mean': 0
+            , 'initial_stddev': 1e-2
+            , 'er_every': 20
+            , 'er_batch_size': 300
+            , 'er_epoch_size': 50
+            , 'er_rm_size': 20000
+        }
+
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_nb_units = lambda: np.random.randint(10, 100)
+        get_N0 = lambda: np.random.randint(1, 5e3)
+        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_initial_mean = lambda: 0
+        get_initial_stddev = lambda: 5e-1 * np.random.random(1)[0]
+        get_er_epoch_size = lambda: np.random.randint(5, 100)
+        get_er_batch_size = lambda: np.random.randint(16, 1024)
+        get_er_rm_size = lambda: np.random.randint(1000, 50000)
+        get_er_every = lambda: np.random.randint(1000, 50000)
+
+        random_config = {
+            'lr': get_lr()
+            , 'discount': get_discount()
+            , 'nb_units': get_nb_units()
+            , 'N0': get_N0()
+            , 'min_eps': get_min_eps()
+            , 'initial_mean': get_initial_mean()
+            , 'initial_stddev': get_initial_stddev()
+            , 'er_epoch_size': get_er_epoch_size()
+            , 'er_batch_size': get_er_batch_size()
+            , 'er_rm_size': get_er_rm_size()
+            , 'er_every': get_er_every()
+        }
+        random_config.update(fixed_params)
+
+        return random_config
+    
 
     def build_graph(self, graph):
         with graph.as_default():
@@ -259,9 +318,20 @@ class DDQNAgent(DQNAgent):
     """
     Agent implementing The DDQN
     """
-    # Best: # Best: {'agent_name': 'DQNAgent', 'max_iter': 2000, 'lr': 0.001, 'nb_units': 50.0, 'discount': 0.99, 'N0': 100, 'min_eps': 0.01, 'er_every': 20, 'er_batch_size': 300, 'er_epoch_size': 50, 'er_rm_size': 20000, 'env_name': 'CartPole-v0'}
-    def get_best_config():
-        pass
+    def get_best_config(self):
+        return {
+            'lr': 0.001
+            , 'nb_units': 50.0
+            , 'discount': 0.99
+            , 'N0': 100
+            , 'min_eps': 0.01
+            , 'initial_mean': 0
+            , 'initial_stddev': 1e-2
+            , 'er_every': 20
+            , 'er_batch_size': 300
+            , 'er_epoch_size': 50
+            , 'er_rm_size': 20000
+        }
 
     def build_graph(self, graph):
         with graph.as_default():
@@ -325,23 +395,12 @@ class DDQNAgent(DQNAgent):
 
         return graph
 
-class DeepFixedQOfflineERAgent(DeepTDAgent):
+class DeepFixedQOfflineERAgent(DQNAgent):
     """
     Agent implementing 2-layer NN Q-learning, using experience replay, fixed Q Network and TD(0).
     """
     def get_best_config(self):
-        pass
-
-    def set_agent_props(self):
-        super(DeepFixedQOfflineERAgent, self).set_agent_props()
-
-        self.er_every = self.config['er_every']
-        self.er_batch_size = self.config['er_batch_size']
-        self.er_epoch_size = self.config['er_epoch_size']
-        self.er_rm_size = self.config['er_rm_size']
-
-        self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
-        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
+        return {}
 
     def build_graph(self, graph):
         with graph.as_default():

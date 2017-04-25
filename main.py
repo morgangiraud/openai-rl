@@ -11,7 +11,7 @@ dir = os.path.dirname(os.path.realpath(__file__))
 flags = tf.app.flags
 
 # HP search
-flags.DEFINE_boolean('full_search', False, 'Perform a full search of hyperparameter space (hyperband -> lr search -> hyperband with best lr)')
+flags.DEFINE_boolean('fullsearch', False, 'Perform a full search of hyperparameter space (hyperband -> lr search -> hyperband with best lr)')
 flags.DEFINE_string('fixed_params', "{}", 'JSON inputs to fix some params in a random search, ex: \'{"lr": 0.001}\'')
 
 # Hyperband
@@ -70,26 +70,26 @@ def main(_):
         with open(config['result_dir_prefix'] + '/hb_results.json', 'w') as f:
             json.dump(results, f)
 
-    elif config['full_search']:
+    elif config['fullsearch']:
         print('*** Starting full search')
-        config['result_dir_prefix'] = dir + '/results/full_search/' + str(int(time.time())) + '-' + config['agent_name']
+        config['result_dir_prefix'] = dir + '/results/fullsearch/' + str(int(time.time())) + '-' + config['agent_name']
         os.makedirs(config['result_dir_prefix'])
         
-        print('*** Starting first pass: full hyperband search')
+        print('*** Starting first pass: full random search')
         summary = fullsearch.first_pass(config)
-        with open(config['result_dir_prefix'] + '/full_search_results1.json', 'w') as f:
+        with open(config['result_dir_prefix'] + '/fullsearch_results1.json', 'w') as f:
             json.dump(summary, f)
 
         print('*** Starting second pass: Learning rate search')
         best_agent_config = summary['results'][0]['params']
         summary = fullsearch.second_pass(config, best_agent_config)
-        with open(config['result_dir_prefix'] + '/full_search_results2.json', 'w') as f:
+        with open(config['result_dir_prefix'] + '/fullsearch_results2.json', 'w') as f:
             json.dump(summary, f)
 
         print('*** Starting third pass: Hyperband search with best lr')
         best_lr = summary['results'][0]['lr']
         summary = fullsearch.third_pass(config, best_lr)
-        with open(config['result_dir_prefix'] + '/full_search_results3.json', 'w') as f:
+        with open(config['result_dir_prefix'] + '/fullsearch_results3.json', 'w') as f:
             json.dump(summary, f)
     else:
         env = gym.make(config['env_name'])

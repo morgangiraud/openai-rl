@@ -71,11 +71,11 @@ class BasicAgent(object):
     def learn_from_episode(self, env):
         raise Exception('The learn_from_episode function must be overrided by the agent')
 
-    def train(self, render=False):
+    def train(self, render=False, save_every=49):
         for episode_id in range(0, self.max_iter):
             self.learn_from_episode(self.env, render)
 
-            if episode_id % 49 == 0: # Every 50 training episode
+            if save_every > 0 and episode_id % save_every == 0:
                 self.save()
 
     def save(self):

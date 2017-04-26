@@ -26,7 +26,7 @@ def exec_first_pass(counter, config, params):
     mean_score, stddev_score = get_score_stat(config['result_dir'])
 
     seconds = int( round( time.time() - start_time ))
-    print("Run: {} | {}, mean_score {}".format(counter, time.ctime(), np.mean(scores)))
+    print("Run: {} | {}, mean_score {}".format(counter, time.ctime(), mean_score))
     print("%d seconds." % seconds )
 
     return {

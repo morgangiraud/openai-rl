@@ -5,7 +5,7 @@ from gym.spaces import Discrete, Box
 class BasicAgent(object):
     def __init__(self, config, env):
         if config['best']:
-            config.update(self.get_best_config())
+            config.update(self.get_best_config(config['env_name']))
         self.config = config
 
         if config['debug']:
@@ -55,7 +55,7 @@ class BasicAgent(object):
     def set_agent_props(self):
         pass
 
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {}
 
     @staticmethod

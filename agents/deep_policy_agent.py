@@ -24,7 +24,7 @@ class DeepMCPolicyAgent(BasicAgent):
             , 'initial_stddev': self.config['initial_stddev']
         }
 
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {
             'lr': 1e-3
             , 'discount': 0.99
@@ -35,7 +35,7 @@ class DeepMCPolicyAgent(BasicAgent):
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_nb_units = lambda: np.random.randint(10, 100)
         get_initial_mean = lambda: 0

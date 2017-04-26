@@ -1,23 +1,23 @@
 # Tabular based agents
-python3 main.py --agent_name TabularQAgent --best
-python3 main.py --agent_name BackwardTabularQAgent --best
-python3 main.py --agent_name TabularQERAgent --best
-python3 main.py --agent_name TabularFixedQERAgent --best
-python3 main.py --agent_name TabularQOfflineERAgent --best
-python3 main.py --agent_name TabularFixedQOfflineERAgent  --best
-python3 main.py --agent_name BackwardTabularFixedQOfflineERAgent --best
+python3 main.py --best --agent_name TabularQAgent
+python3 main.py --best --agent_name BackwardTabularQAgent
+python3 main.py --best --agent_name TabularQERAgent
+python3 main.py --best --agent_name TabularFixedQERAgent
+python3 main.py --best --agent_name TabularQOfflineERAgent
+python3 main.py --best --agent_name TabularFixedQOfflineERAgent 
+python3 main.py --best --agent_name BackwardTabularFixedQOfflineERAgent
 
 # Value approximation based agent
-python3 main.py --agent_name DeepTDAgent --best
-python3 main.py --agent_name DQNAgent --best
-python3 main.py --agent_name DDQNAgent --best
-python3 main.py --agent_name DeepFixedQOfflineERAgent --best
+python3 main.py --best --agent_name DeepTDAgent
+python3 main.py --best --agent_name DQNAgent
+python3 main.py --best --agent_name DDQNAgent
+python3 main.py --best --agent_name DeepFixedQOfflineERAgent
 
 # Policy approximation based Agent
-python3 main.py --agent_name DeepMCPolicyAgent --best
+python3 main.py --best --agent_name DeepMCPolicyAgent
 
 # Actor critic approximation based agent
-python3 main.py --agent_name MCActorCriticAgent --best
-python3 main.py --agent_name ActorCriticAgent --best
-python3 main.py --agent_name A2CAgent --best
-python3 main.py --agent_name TDACAgent --best
+python3 main.py --best --agent_name MCActorCriticAgent
+python3 main.py --best --agent_name ActorCriticAgent
+python3 main.py --best --agent_name A2CAgent
+python3 main.py --best --agent_name TDACAgent

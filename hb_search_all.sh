@@ -20,5 +20,5 @@ agentList="
 "
 
 for agent in $agentList; do
-  python3 main.py --full_search --agent_name "$agent" --hb_nb_process 3
+  python3 main.py --fullsearch --agent_name "$agent" --nb_process 3
 done

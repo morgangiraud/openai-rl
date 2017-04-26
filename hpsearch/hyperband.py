@@ -23,20 +23,20 @@ from agents import make_agent
 
 dir = os.path.dirname(os.path.realpath(__file__))
 
-def execute_run(counter, func, n_iterations, t, main_config, dry_run):    
+def execute_run(counter, func, n_iterations, params, main_config, dry_run):    
     start_time = time()
-    main_config['run'] = counter
 
     if dry_run:
         result = { 'loss': random(), 'log_loss': random(), 'auc': random()}
     else:
-        result = func( n_iterations, t, main_config )   # <---
+        result = func( n_iterations, params, main_config )   # <---
 
     seconds = int( round( time() - start_time ))
-    print("Run {} | {}".format(counter, ctime()))
-    print("%d seconds." % seconds )
+    if not dry_run:
+        print("Run {} with params {} | {}".format(counter, params['id'], ctime()))
+        print("%d seconds." % seconds )
 
-    return counter, result, n_iterations, t, seconds
+    return counter, result, n_iterations, params, seconds
 
 class Hyperband:
 
@@ -44,8 +44,8 @@ class Hyperband:
         self.get_params = get_params_function
         self.try_params = try_params_function
 
-        self.max_iter = 81    # maximum iterations per configuration
-        self.eta = 3      # defines configuration downsampling rate (default = 3)
+        self.max_iter = 81 # 244     # maximum iterations per configuration
+        self.eta = 3            # defines configuration downsampling rate (default = 3)
 
         self.logeta = lambda x: log( x ) / log( self.eta )
         self.s_max = int( self.logeta( self.max_iter ))
@@ -56,6 +56,7 @@ class Hyperband:
         self.best_loss = np.inf
         self.best_counter = -1
 
+        print("*** max_iter: %d, eta: %d, s_max: %d, B %d" % (self.max_iter, self.eta, self.s_max, self.B))
 
     # can be called multiple times
     def run( self, main_config, skip_last = 0, dry_run = False ):
@@ -69,6 +70,8 @@ class Hyperband:
 
             # n random configurations
             T = [ self.get_params(main_config['fixed_params']) for i in range( n )]
+            for i, params in enumerate(T):
+                params['id'] = i
 
             for i in range(( s + 1 ) - int( skip_last )): # changed from s + 1
 
@@ -86,7 +89,7 @@ class Hyperband:
                 early_stops = []
 
                 futures = []
-                with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), main_config['hb_nb_process'])) as executor:
+                with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), main_config['nb_process'])) as executor:
                     for t in T:
                         self.counter += 1
                         futures.append(executor.submit(execute_run, self.counter, self.try_params, n_iterations, t, main_config, dry_run))
@@ -117,9 +120,10 @@ class Hyperband:
 
                     self.results.append( result )
 
-                print("*** Set %d-%d finished | best so far: %4f (run %d)" % (
-                    s, i, self.best_loss, self.best_counter
-                ))
+                if not dry_run:
+                    print("*** Set %d-%d finished | best so far: %4f (run %d)" % (
+                        s, i, self.best_loss, self.best_counter
+                    ))
 
                 # select a number of best configurations for the next loop
                 # filter out early stops, if any
@@ -132,11 +136,11 @@ class Hyperband:
 
         return {'results': results, 'best_counter':self.best_counter}
 
-def run_params(nb_epoch, config, main_config):
-    config = copy.deepcopy(config)
-    config.update(main_config)
-    config['result_dir'] = main_config['result_dir_prefix'] + '/' + main_config['env_name'] + '/' + main_config['agent_name'] + '/run-' + str(main_config['run'])
-    config['max_iter'] = int(nb_epoch) * main_config['hb_games_per_epoch']
+def run_params(nb_epochs, params, main_config):
+    config = copy.deepcopy(main_config)
+    config.update(params)
+    config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/run-' + str(config['id'])
+    config['max_iter'] = int(nb_epochs) * config['games_per_epoch']
 
     # If we are reusing a configuration, we remove its folder before next training
     if os.path.exists(config['result_dir']):
@@ -147,11 +151,11 @@ def run_params(nb_epoch, config, main_config):
     agent = make_agent(config, env)
     
     # We train the agent
-    agent.train()
+    agent.train(save_every=-1)
     agent.save()
 
     # If we are training for less than 9 epochs, we remove the folder
-    if nb_epoch < 9:
+    if nb_epochs < 9:
         shutil.rmtree(config['result_dir'])
 
     # We test the agent and get the mean score for metrics

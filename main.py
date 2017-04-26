@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 
 from agents import make_agent, get_agent_class
-from hpsearch.hyperband import Hyperband, run_params, execute_run
+from hpsearch.hyperband import Hyperband, run_params
 from hpsearch import fullsearch
 
 dir = os.path.dirname(os.path.realpath(__file__))
@@ -16,9 +16,9 @@ flags.DEFINE_string('fixed_params', "{}", 'JSON inputs to fix some params in a r
 
 # Hyperband
 flags.DEFINE_boolean('hyperband', False, 'Perform a hyperband search of hyperparameters')
-flags.DEFINE_boolean('hb_dry_run', False, 'Perform a hyperband dry_run')
-flags.DEFINE_integer('hb_nb_process', 4, 'Number of parallel process to perform a hyperband search')
-flags.DEFINE_integer('hb_games_per_epoch', 100, 'Number of parallel process to perform a hyperband search')
+flags.DEFINE_boolean('dry_run', False, 'Perform a hyperband dry_run')
+flags.DEFINE_integer('nb_process', 4, 'Number of parallel process to perform a hyperband search')
+flags.DEFINE_integer('games_per_epoch', 100, 'Number of parallel process to perform a hyperband search')
 
 # Agent
 flags.DEFINE_string('agent_name', 'DQNAgent', 'Name of the agent')
@@ -63,7 +63,7 @@ def main(_):
 
         get_params = get_agent_class(config).get_random_config
         hb = Hyperband( get_params, run_params )
-        results = hb.run(config, skip_last=True, dry_run=config['hb_dry_run'])
+        results = hb.run(config, skip_last=True, dry_run=config['dry_run'])
 
         if not os.path.exists(config['result_dir_prefix']):
             os.makedirs(config['result_dir_prefix'])

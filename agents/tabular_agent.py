@@ -24,6 +24,7 @@ class TabularQAgent(BasicAgent):
             , 'min_eps': 0.01
             , 'initial_q_value': 0
         }
+        
 
     @staticmethod
     def get_random_config(fixed_params={}):

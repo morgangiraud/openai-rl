@@ -58,7 +58,7 @@ def first_pass(config):
 
     results = []
     futures = []
-    with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), config['hb_nb_process'])) as executor:
+    with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), config['nb_process'])) as executor:
         nb_config = 5 if config['debug'] else 500
         for i in range(nb_config): 
             params = get_params()
@@ -108,7 +108,7 @@ def second_pass(config, best_agent_config):
     config['result_dir_prefix'] = config['result_dir_prefix'] + '/second-pass'
     config['max_iter'] = 5 if config['debug'] else 500
     futures = []
-    with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), config['hb_nb_process'])) as executor:
+    with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), config['nb_process'])) as executor:
         if config['debug']:
             lrs = [1e-4, 1e-2, 1]
         else:
@@ -133,7 +133,7 @@ def third_pass(config, best_lr):
 
     config["fixed_params"] = {'lr': best_lr}
     config['result_dir_prefix'] = config['result_dir_prefix'] + '/third-pass'
-    config['hb_games_per_epoch'] =  5 if config['debug'] else 100
+    config['games_per_epoch'] =  5 if config['debug'] else 100
     dry_run = True if config['debug'] else False
 
     get_params = get_agent_class(config).get_random_config

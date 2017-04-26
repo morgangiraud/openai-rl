@@ -19,12 +19,12 @@ class DeepTDAgent(BasicAgent):
         self.N0 = self.config['N0']
         self.min_eps = self.config['min_eps']
 
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {}
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_nb_units = lambda: np.random.randint(10, 100)
         get_N0 = lambda: np.random.randint(1, 5e3)
@@ -157,7 +157,7 @@ class DQNAgent(DeepTDAgent):
         self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {
             'lr': 1e-3
             , 'nb_units': 50
@@ -174,7 +174,7 @@ class DQNAgent(DeepTDAgent):
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_nb_units = lambda: np.random.randint(10, 100)
         get_N0 = lambda: np.random.randint(1, 5e3)
@@ -320,7 +320,7 @@ class DDQNAgent(DQNAgent):
     """
     Agent implementing The DDQN
     """
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {
             'lr': 0.001
             , 'nb_units': 50.0
@@ -403,7 +403,7 @@ class DeepFixedQOfflineERAgent(DQNAgent):
     """
     Agent implementing 2-layer NN Q-learning, using experience replay, fixed Q Network and TD(0).
     """
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {}
 
     def build_graph(self, graph):

@@ -16,15 +16,25 @@ class TabularQAgent(BasicAgent):
         self.min_eps = self.config['min_eps']
         self.initial_q_value = self.config['initial_q_value']
 
-    def get_best_config(self):
-        return {
-            # 'env_name': 'CartPole-v0' Env used to find those hyperparams
+    def get_best_config(self, env_name=""):
+        carpolev0 = {
             'lr': 0.1
             , 'discount': 0.999 # ->1[ improve
             , 'N0': 76 # -> ~ 75 improve
             , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
         }
+        mountaincarv0 = {
+            'lr': 0.1
+            , 'discount': 0.999
+            , 'N0': 75
+            , 'min_eps': 0.001
+            , 'initial_q_value': 0
+        }
+        return {
+            'CartPole-v0': carpolev0
+            , 'MountainCar-v0': mountaincarv0
+        }.get(env_name, carpolev0)
         
 
     @staticmethod
@@ -142,7 +152,7 @@ class BackwardTabularQAgent(TabularQAgent):
 
         self.lambda_value = self.config['lambda']
 
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {
             'lr': 0.1
             , 'discount': 0.999
@@ -240,7 +250,7 @@ class TabularQERAgent(TabularQAgent):
         self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {
             'lr': 0.1
             , 'discount': 0.999
@@ -376,7 +386,7 @@ class TabularFixedQERAgent(TabularQERAgent):
 
         self.er_every = config['er_every']
 
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {}
 
     @staticmethod
@@ -522,7 +532,7 @@ class TabularQOfflineERAgent(TabularQAgent):
         self.replayMemoryDt = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'int32')])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {}
 
     @staticmethod
@@ -670,7 +680,7 @@ class TabularFixedQOfflineERAgent(TabularQOfflineERAgent):
     """
     Agent implementing tabular Q-learning with offline experience replay and a second fixed network.
     """        
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {}
 
     def build_graph(self, graph):
@@ -803,7 +813,7 @@ class BackwardTabularFixedQOfflineERAgent(TabularQOfflineERAgent):
 
         self.lambda_value = self.config['lambda']
 
-    def get_best_config(self):
+    def get_best_config(self, env_name=""):
         return {}
 
     @staticmethod

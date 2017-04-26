@@ -20,6 +20,7 @@ from math import log, ceil
 from time import time, ctime
 
 from agents import make_agent
+from hpsearch.utils import get_score_stat
 
 dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -153,18 +154,15 @@ def run_params(nb_epochs, params, main_config):
     # We train the agent
     agent.train(save_every=-1)
     agent.save()
+    mean_score, stddev_score = get_score_stat(config['result_dir'])
 
     # If we are training for less than 9 epochs, we remove the folder
     if nb_epochs < 9:
         shutil.rmtree(config['result_dir'])
 
-    # We test the agent and get the mean score for metrics
-    score = []
-    for i in range(5):
-        score.append(agent.play(env, render=False))
-    loss = - np.mean(score) # Hyperbands want a loss
-
     return {
-        'loss': loss
+        'loss': -mean_score
+        , 'mean_score': mean_score
+        , 'stddev_score': stddev_score
     }
 

@@ -9,6 +9,8 @@ sys.path.append(dir + '/..')
 
 from agents import make_agent, get_agent_class
 from hpsearch.hyperband import Hyperband, run_params
+from hpsearch.utils import get_score_stat
+
 
 def exec_first_pass(counter, config, params):
     start_time = time.time()
@@ -21,16 +23,7 @@ def exec_first_pass(counter, config, params):
 
     # We train the agent
     agent.train(save_every=-1)
-
-    eventFile = [f for f in os.listdir(config['result_dir']) if os.path.isfile(os.path.join(config['result_dir'], f)) and 'events' in f][0]
-    scores = []
-    try:
-        for events in tf.train.summary_iterator(os.path.join(config['result_dir'], eventFile)):
-            for v in events.summary.value:
-                if v.tag == "score":
-                    scores.append(v.simple_value)
-    except:
-        pass
+    mean_score, stddev_score = get_score_stat(config['result_dir'])
 
     seconds = int( round( time.time() - start_time ))
     print("Run: {} | {}, mean_score {}".format(counter, time.ctime(), np.mean(scores)))
@@ -38,8 +31,8 @@ def exec_first_pass(counter, config, params):
 
     return {
         'params': params
-        , 'mean_score': np.mean(scores)
-        , 'stddev_score': np.sqrt(np.var(scores))
+        , 'mean_score': mean_score
+        , 'stddev_score': stddev_score
     }
 
 def first_pass(config):
@@ -86,19 +79,16 @@ def exec_second_pass(config):
 
     # We train the agent
     agent.train(save_every=-1)
-
-    # We test the agent and get the mean score for metrics
-    score = []
-    for i in range(500):
-        score.append(agent.play(env, render=False))
+    mean_score, stddev_score = get_score_stat(config['result_dir'])
 
     seconds = int( round( time.time() - start_time ))
     print("Run with lr: {} | {}".format(config['lr'], time.ctime()))
     print("%d seconds." % seconds )
 
     return {
-        'score': np.mean(score)
-        , 'lr': config['lr']
+        'lr': config['lr']
+        , 'mean_score': mean_score
+        , 'stddev_score': stddev_score
     }
 
 def second_pass(config, best_agent_config):
@@ -125,7 +115,7 @@ def second_pass(config, best_agent_config):
 
     return {
         'best_agent_config': best_agent_config
-        , 'results': sorted(results, key=lambda result: result['score'], reverse=True)
+        , 'results': sorted(results, key=lambda result: result['mean_score'], reverse=True)
     }
 
 def third_pass(config, best_lr):

@@ -24,6 +24,13 @@ class TabularQAgent(BasicAgent):
             , 'min_eps': 0.01
             , 'initial_q_value': 0
         }
+        # return {
+        #     'lr': 0.1
+        #     , 'discount': 0.7925
+        #     , 'N0': 76
+        #     , 'min_eps': 0.0057
+        #     , 'initial_q_value': 0
+        # }
         
 
     @staticmethod

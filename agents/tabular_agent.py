@@ -18,19 +18,13 @@ class TabularQAgent(BasicAgent):
 
     def get_best_config(self):
         return {
+            # 'env_name': 'CartPole-v0' Env used to find those hyperparams
             'lr': 0.1
-            , 'discount': 0.999
-            , 'N0': 100
-            , 'min_eps': 0.01
+            , 'discount': 0.999 # ->1[ improve
+            , 'N0': 76 # -> ~ 75 improve
+            , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
         }
-        # return {
-        #     'lr': 0.1
-        #     , 'discount': 0.7925
-        #     , 'N0': 76
-        #     , 'min_eps': 0.0057
-        #     , 'initial_q_value': 0
-        # }
         
 
     @staticmethod

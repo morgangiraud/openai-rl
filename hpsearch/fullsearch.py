@@ -15,7 +15,7 @@ from hpsearch.utils import get_score_stat
 def exec_first_pass(counter, config, params):
     start_time = time.time()
 
-    config['result_dir'] = config['result_dir_prefix'] + '/run-' + str(counter)
+    config['result_dir'] = config['result_dir_prefix'] + '/run-' + str(counter).zfill(3)
 
     # We create the agent
     env = gym.make(config['env_name'])
@@ -52,7 +52,7 @@ def first_pass(config):
     results = []
     futures = []
     with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), config['nb_process'])) as executor:
-        nb_config = 5 if config['debug'] else 500
+        nb_config = 5 if config['debug'] else 1000
         for i in range(nb_config): 
             params = get_params()
             config.update(params)

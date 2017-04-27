@@ -140,7 +140,7 @@ class Hyperband:
 def run_params(nb_epochs, params, main_config):
     config = copy.deepcopy(main_config)
     config.update(params)
-    config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/run-' + str(config['id'])
+    config['result_dir'] = config['result_dir_prefix'] + '/' + config['env_name'] + '/' + config['agent_name'] + '/run-' + str(config['id']).zfill(3)
     config['max_iter'] = int(nb_epochs) * config['games_per_epoch']
 
     # If we are reusing a configuration, we remove its folder before next training

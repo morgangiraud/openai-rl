@@ -27,10 +27,10 @@ class DeepMCPolicyAgent(BasicAgent):
     def get_best_config(self, env_name=""):
         return {
             'lr': 1e-3
-            , 'discount': 0.99
-            , 'nb_units': 50
+            , 'discount': 0.8209896594244546
+            , 'nb_units': 41
             , 'initial_mean': 0.
-            , 'initial_stddev': 1e-2
+            , 'initial_stddev': 0.423321967449976
         }
 
     @staticmethod
@@ -150,6 +150,15 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
         }
         self.policy_lr = self.lr
         self.q_lr = self.lr
+
+    def get_best_config(self, env_name=""):
+        return {
+            'lr': 1e-3
+            , 'discount': 0.7987841714685839
+            , 'nb_units': 87
+            , 'initial_mean': 0.
+            , 'initial_stddev': 0.423321967449976
+        }
 
     def build_graph(self, graph):
         with graph.as_default():

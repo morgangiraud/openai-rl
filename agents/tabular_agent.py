@@ -39,7 +39,7 @@ class TabularQAgent(BasicAgent):
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
@@ -154,17 +154,17 @@ class BackwardTabularQAgent(TabularQAgent):
 
     def get_best_config(self, env_name=""):
         return {
-            'lr': 0.1
+            'lr': 0.0001
             , 'discount': 0.999
-            , 'N0': 100
-            , 'min_eps': 0.01
+            , 'N0': 220
+            , 'min_eps': 0.005
             , 'initial_q_value': 0
-            , 'lambda': .9
+            , 'lambda': .99
         }
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
@@ -252,18 +252,18 @@ class TabularQERAgent(TabularQAgent):
 
     def get_best_config(self, env_name=""):
         return {
-            'lr': 0.1
+            'lr': 0.03
             , 'discount': 0.999
-            , 'N0': 100
-            , 'min_eps': 0.01
+            , 'N0': 75
+            , 'min_eps': 0.005
             , 'initial_q_value': 0
-            , 'er_batch_size': 300
-            , 'er_rm_size': 20000
+            , 'er_batch_size': 783
+            , 'er_rm_size': 36916
         }
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
@@ -387,18 +387,27 @@ class TabularFixedQERAgent(TabularQERAgent):
         self.er_every = config['er_every']
 
     def get_best_config(self, env_name=""):
-        return {}
+        return {
+            'lr': 0.03
+            , 'discount': 0.999
+            , 'N0': 75
+            , 'min_eps': 0.005
+            , 'initial_q_value': 0
+            , 'er_batch_size': 783
+            , 'er_rm_size': 36916
+            , "er_every": 200
+        }
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
         get_er_batch_size = lambda: np.random.randint(16, 1024)
         get_er_rm_size = lambda: np.random.randint(1000, 50000)
-        get_er_every = lambda: np.random.randint(1000, 50000)
+        get_er_every = lambda: np.random.randint(1, 1000)
 
         random_config = {
             'lr': get_lr()
@@ -537,7 +546,7 @@ class TabularQOfflineERAgent(TabularQAgent):
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
@@ -545,7 +554,7 @@ class TabularQOfflineERAgent(TabularQAgent):
         get_er_epoch_size = lambda: np.random.randint(5, 100)
         get_er_batch_size = lambda: np.random.randint(16, 1024)
         get_er_rm_size = lambda: np.random.randint(1000, 50000)
-        get_er_every = lambda: np.random.randint(1000, 50000)
+        get_er_every = lambda: np.random.randint(1, 1000)
 
         random_config = {
             'lr': get_lr()
@@ -818,7 +827,7 @@ class BackwardTabularFixedQOfflineERAgent(TabularQOfflineERAgent):
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
@@ -826,7 +835,7 @@ class BackwardTabularFixedQOfflineERAgent(TabularQOfflineERAgent):
         get_lambda = lambda: np.random.random(1)[0]
         get_er_batch_size = lambda: np.random.randint(16, 1024)
         get_er_rm_size = lambda: np.random.randint(1000, 50000)
-        get_er_every = lambda: np.random.randint(1000, 50000)
+        get_er_every = lambda: np.random.randint(1, 1000)
 
         random_config = {
             'lr': get_lr()

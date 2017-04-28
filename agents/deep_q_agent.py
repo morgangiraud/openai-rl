@@ -20,7 +20,15 @@ class DeepTDAgent(BasicAgent):
         self.min_eps = self.config['min_eps']
 
     def get_best_config(self, env_name=""):
-        return {}
+        return {
+            "lr": 0.006,
+            "initial_mean": 0,
+            "discount": 0.999,
+            "nb_units": 81,
+            "min_eps": 0.001,
+            "initial_stddev": 0.44732464914245396,
+            "N0": 4868
+          }
 
     @staticmethod
     def get_random_config(fixed_params={}):
@@ -158,16 +166,16 @@ class DQNAgent(DeepTDAgent):
 
     def get_best_config(self, env_name=""):
         return {
-            'lr': 1e-3
-            , 'nb_units': 50
-            , 'discount': 0.99
-            , 'N0': 100
-            , 'min_eps': 0.01
+            'lr': 9e-4
+            , 'nb_units': 22
+            , 'discount': 0.999
+            , 'N0': 2200
+            , 'min_eps': 0.001
             , 'initial_mean': 0.
-            , 'initial_stddev': 1e-2
-            , 'er_every': 20
-            , 'er_batch_size': 300
-            , 'er_rm_size': 20000
+            , 'initial_stddev': 0.2776861144026909
+            , 'er_every': 201
+            , 'er_batch_size': 208
+            , 'er_rm_size': 40000
         }
 
     @staticmethod
@@ -318,16 +326,16 @@ class DDQNAgent(DQNAgent):
     """
     def get_best_config(self, env_name=""):
         return {
-            "lr": 0.0007
-            , "nb_units": 80 # less units, less stable
-            , "discount": 0.999
-            , "N0": 1371
-            , "min_eps": 0.01 # ->0.01] improve stability
-            , "initial_mean": 0
-            , "initial_stddev": 0.3984814834956552 # ->0.4] improve
-            , "er_every": 198
-            , "er_rm_size": 39350
-            , "er_batch_size": 256
+            'lr': 8e-4
+            , 'nb_units': 83
+            , 'discount': 0.999
+            , 'N0': 2571
+            , 'min_eps': 0.001
+            , 'initial_mean': 0.
+            , 'initial_stddev': 0.39560728810993573
+            , 'er_every': 116
+            , 'er_batch_size': 259
+            , 'er_rm_size': 40000
         }
 
     def build_graph(self, graph):
@@ -404,7 +412,19 @@ class DeepFixedQOfflineERAgent(DQNAgent):
         self.er_epoch_size = self.config['er_epoch_size']
 
     def get_best_config(self, env_name=""):
-        return {}
+        return {
+            "initial_mean": 0,
+            "lr": 0.0001,
+            "er_batch_size": 805,
+            "er_epoch_size": 63,
+            "er_every": 1,
+            "initial_stddev": 0.2608188033316199,
+            "min_eps": 0.001,
+            "N0": 1393,
+            "nb_units": 20,
+            "discount": 0.999,
+            "er_rm_size": 36196
+          }
 
     @staticmethod
     def get_random_config(fixed_params={}):
@@ -552,9 +572,9 @@ class DeepFixedQOfflineERAgent(DQNAgent):
         })
         self.sw.add_summary(summary, episode_id)
 
-        # Experiencing replays
         if episode_id % self.er_every == 0:
             self.sess.run(self.update_fixed_vars_op)
+
             for i in range(self.er_epoch_size):
                 memories = np.random.choice(self.replayMemory, self.er_batch_size)
                 _ = self.sess.run(self.er_train_op, feed_dict={

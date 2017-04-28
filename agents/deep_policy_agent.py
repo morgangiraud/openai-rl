@@ -118,13 +118,11 @@ class DeepMCPolicyAgent(BasicAgent):
             if done:
                 break
 
-        expected_reward = getExpectedRewards(history['rewards'])
-
         # Learning
         _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
             self.inputs: history['states'],
             self.actions: history['actions'],
-            self.rewards: expected_reward,
+            self.rewards: getExpectedRewards(history['rewards']),
         })
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,
@@ -148,8 +146,7 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
             , 'initial_mean': self.config['initial_mean']
             , 'initial_stddev': self.config['initial_stddev']
         }
-        self.policy_lr = self.lr
-        self.q_lr = self.lr
+        self.q_scale_lr = self.config['q_scale_lr']
 
     def get_best_config(self, env_name=""):
         return {
@@ -158,7 +155,29 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
             , 'nb_units': 87
             , 'initial_mean': 0.
             , 'initial_stddev': 0.423321967449976
+            , 'q_scale_lr': 1.
         }
+
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_lr = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_nb_units = lambda: np.random.randint(10, 100)
+        get_initial_mean = lambda: 0
+        get_initial_stddev = lambda: 5e-1 * np.random.random(1)[0]
+        get_q_scale_lr = lambda: 10 * np.random.random(1)[0]
+
+        random_config = {
+            'lr': get_lr()
+            , 'discount': get_discount()
+            , 'nb_units': get_nb_units()
+            , 'initial_mean': get_initial_mean()
+            , 'initial_stddev': get_initial_stddev()
+            , 'q_scale_lr': get_q_scale_lr()
+        }
+        random_config.update(fixed_params)
+
+        return random_config
 
     def build_graph(self, graph):
         with graph.as_default():
@@ -178,14 +197,9 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
 
             with tf.variable_scope('Training'):
                 stacked_actions = tf.stack([tf.range(0, tf.shape(self.actions)[0]), tf.squeeze(self.actions, 1)], 1)
+                qs = tf.gather_nd(self.q_values, stacked_actions)      
                 log_probs = tf.log(tf.gather_nd(self.probs, stacked_actions))
-
-                qs = tf.gather_nd(self.q_values, stacked_actions)
-
                 self.policy_loss = - tf.reduce_sum(log_probs * tf.stop_gradient(qs))
-                policy_adam = tf.train.AdamOptimizer(self.policy_lr)
-                self.policy_global_step = tf.Variable(0, trainable=False, name="policy_global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
-                self.policy_train_op = policy_adam.minimize(self.policy_loss, global_step=self.policy_global_step)
 
                 self.rewards = tf.placeholder(tf.float32, shape=[None], name="rewards")
                 self.next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="next_states")
@@ -197,13 +211,15 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
                 target_qs1 = tf.stop_gradient(self.rewards + self.discount * next_qs)
                 target_qs2 = self.rewards
                 stacked_targets = tf.stack([target_qs1, target_qs2], 1)
-                select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, 4], tf.int32)], 1)
+                select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, -1], tf.int32)], 1)
                 target_qs = tf.gather_nd(stacked_targets, select_targets)
-
                 self.q_loss = 1/2 * tf.reduce_sum(tf.square(target_qs - qs))
-                q_adam = tf.train.AdamOptimizer(self.q_lr)
-                self.q_global_step = tf.Variable(0, trainable=False, name="q_global_step")
-                self.q_train_op = q_adam.minimize(self.q_loss, global_step=self.q_global_step)
+                
+                self.loss = self.policy_loss + self.q_scale_lr * self.q_loss 
+
+                adam = tf.train.AdamOptimizer(self.lr)
+                self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                self.train_op = adam.minimize(self.loss, global_step=self.global_step)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)
@@ -211,6 +227,8 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
             self.policy_loss_sum_t = tf.summary.scalar('policy_loss', self.policy_loss_plh)
             self.q_loss_plh = tf.placeholder(tf.float32, shape=[])
             self.q_loss_sum_t = tf.summary.scalar('q_loss', self.q_loss_plh)
+            self.loss_plh = tf.placeholder(tf.float32, shape=[])
+            self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
@@ -259,7 +277,7 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
                 break
 
         # Learning
-        _, policy_loss, _, q_loss = self.sess.run([self.policy_train_op, self.policy_loss , self.q_train_op, self.q_loss], feed_dict={
+        _, policy_loss, q_loss, loss = self.sess.run([self.train_op, self.policy_loss, self.q_loss, self.loss], feed_dict={
             self.inputs: history['states'],
             self.actions: history['actions'],
             self.rewards: getExpectedRewards(history['rewards']),
@@ -270,6 +288,7 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
             self.score_plh: score,
             self.policy_loss_plh: policy_loss,
             self.q_loss_plh: q_loss,
+            self.loss_plh: loss,
         })
         self.sw.add_summary(summary, episode_id)
 
@@ -317,7 +336,7 @@ class ActorCriticAgent(MCActorCriticAgent):
                     target_qs1 = tf.stop_gradient(self.rewards + self.discount * next_qs)
                     target_qs2 = self.rewards
                     stacked_targets = tf.stack([target_qs1, target_qs2], 1)
-                    select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, 4], tf.int32)], 1)
+                    select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, -1], tf.int32)], 1)
                     target_qs = tf.gather_nd(stacked_targets, select_targets)
 
                     self.q_loss = 1/2 * tf.reduce_sum(tf.square(target_qs - qs))
@@ -436,7 +455,7 @@ class A2CAgent(ActorCriticAgent):
                         target_vs1 = tf.stop_gradient(self.rewards + self.discount * next_vs)
                         target_vs2 = self.rewards
                         stacked_targets = tf.stack([target_vs1, target_vs2], 1)
-                        select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, 4], tf.int32)], 1)
+                        select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, -1], tf.int32)], 1)
                         target_vs = tf.gather_nd(stacked_targets, select_targets)
 
                     with tf.variable_scope(q_scope, reuse=True):
@@ -448,7 +467,7 @@ class A2CAgent(ActorCriticAgent):
                         target_qs1 = tf.stop_gradient(self.rewards + self.discount * next_qs)
                         target_qs2 = self.rewards
                         stacked_targets = tf.stack([target_qs1, target_qs2], 1)
-                        select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, 4], tf.int32)], 1)
+                        select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, -1], tf.int32)], 1)
                         target_qs = tf.gather_nd(stacked_targets, select_targets)
 
                     log_probs = tf.log(tf.gather_nd(self.probs, stacked_actions))
@@ -581,7 +600,7 @@ class TDACAgent(DeepMCPolicyAgent):
                         target_vs1 = tf.stop_gradient(self.rewards + self.discount * next_vs)
                         target_vs2 = self.rewards
                         stacked_targets = tf.stack([target_vs1, target_vs2], 1)
-                        select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, 4], tf.int32)], 1)
+                        select_targets = tf.stack([tf.range(0, tf.shape(self.next_states)[0]), tf.cast(self.next_states[:, -1], tf.int32)], 1)
                         target_vs = tf.gather_nd(stacked_targets, select_targets)
 
                     log_probs = tf.log(tf.gather_nd(self.probs, stacked_actions))

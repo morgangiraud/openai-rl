@@ -542,7 +542,17 @@ class TabularQOfflineERAgent(TabularQAgent):
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
     def get_best_config(self, env_name=""):
-        return {}
+        return {
+            "lr": 0.2
+            , "N0": 75
+            , "er_epoch_size": 74
+            , "er_every": 671
+            , "min_eps": 0.001
+            , "discount": 0.999
+            , "initial_q_value": 0
+            , "er_batch_size": 865
+            , "er_rm_size": 25567
+        }
 
     @staticmethod
     def get_random_config(fixed_params={}):
@@ -690,7 +700,17 @@ class TabularFixedQOfflineERAgent(TabularQOfflineERAgent):
     Agent implementing tabular Q-learning with offline experience replay and a second fixed network.
     """        
     def get_best_config(self, env_name=""):
-        return {}
+        return {
+            "lr": 0.03
+            , "min_eps": 0.001
+            , "discount": 0.999
+            , "er_every": 20
+            , "er_batch_size": 607
+            , "initial_q_value": 0
+            , "er_epoch_size": 35
+            , "er_rm_size": 20000
+            , "N0": 75
+        }
 
     def build_graph(self, graph):
         with graph.as_default():

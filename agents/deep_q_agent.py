@@ -161,7 +161,12 @@ class DQNAgent(DeepTDAgent):
         self.er_batch_size = self.config['er_batch_size']
         self.er_rm_size = self.config['er_rm_size']
 
-        self.replayMemoryDt = np.dtype([('states', 'float32', (5,)), ('actions', 'int32'), ('rewards', 'float32'), ('next_states', 'float32', (5,))])
+        self.replayMemoryDt = np.dtype([
+            ('states', 'float32', (self.observation_space.shape[0] + 1,))
+            , ('actions', 'int32')
+            , ('rewards', 'float32')
+            , ('next_states', 'float32', (self.observation_space.shape[0] + 1,))
+        ])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
     def get_best_config(self, env_name=""):
@@ -246,7 +251,7 @@ class DQNAgent(DeepTDAgent):
                 er_target_qs1 = tf.stop_gradient(self.er_rewards + self.discount * er_next_qs)
                 er_target_qs2 = self.er_rewards
                 er_stacked_targets = tf.stack([er_target_qs1, er_target_qs2], 1)
-                select_targets = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), tf.cast(self.er_next_states[:, 4], tf.int32)], 1)
+                select_targets = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), tf.cast(self.er_next_states[:, -1], tf.int32)], 1)
                 er_target_qs = tf.gather_nd(er_stacked_targets, select_targets)
 
                 self.er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
@@ -379,7 +384,7 @@ class DDQNAgent(DQNAgent):
                 er_target_qs1 = tf.stop_gradient(self.er_rewards + self.discount * er_next_qs)
                 er_target_qs2 = self.er_rewards
                 er_stacked_targets = tf.stack([er_target_qs1, er_target_qs2], 1)
-                select_targets = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), tf.cast(self.er_next_states[:, 4], tf.int32)], 1)
+                select_targets = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), tf.cast(self.er_next_states[:, -1], tf.int32)], 1)
                 er_target_qs = tf.gather_nd(er_stacked_targets, select_targets)
 
                 self.er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
@@ -513,7 +518,7 @@ class DeepFixedQOfflineERAgent(DQNAgent):
                 er_target_qs1 = tf.stop_gradient(self.er_rewards + self.discount * er_next_qs)
                 er_target_qs2 = self.er_rewards
                 er_stacked_targets = tf.stack([er_target_qs1, er_target_qs2], 1)
-                select_targets = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), tf.cast(self.er_next_states[:, 4], tf.int32)], 1)
+                select_targets = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), tf.cast(self.er_next_states[:, -1], tf.int32)], 1)
                 er_target_qs = tf.gather_nd(er_stacked_targets, select_targets)
                 er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
                 er_adam = tf.train.AdamOptimizer(self.lr)

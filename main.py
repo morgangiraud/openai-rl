@@ -29,7 +29,8 @@ flags.DEFINE_float('initial_stddev', 1e-2, 'Initial standard deviation for NN')
 flags.DEFINE_float('lambda', .9, 'Lambda parameters used with eligibility traces')
 flags.DEFINE_float('discount', .999, 'Discount factor')
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
-flags.DEFINE_float('nb_units', 20, 'Number of hidden units in Deep learning agents')
+flags.DEFINE_integer('nb_units', 20, 'Number of hidden units in Deep learning agents')
+flags.DEFINE_float('q_scale_lr', 1., 'For actor critic agents, scale variables between q loss and policy loss')
 
 # Policy
 flags.DEFINE_integer('N0', 100, 'Offset used in the decay algorithm of epsilon')
@@ -49,7 +50,7 @@ flags.DEFINE_integer('max_iter', 2000, 'Number of training step')
 flags.DEFINE_string('result_dir', dir + '/results/' + flags.FLAGS.env_name + '/' + flags.FLAGS.agent_name + '/' + str(int(time.time())), 'Name of the directory to store/log the agent (if it exists, the agent will be loaded from it)')
 
 flags.DEFINE_boolean('play', False, 'Load an agent for playing')
-flags.DEFINE_boolean('play_nb', 10, 'Number of games to play')
+flags.DEFINE_integer('play_nb', 10, 'Number of games to play')
 flags.DEFINE_integer('random_seed', random.randint(0, sys.maxsize), 'Value of random seed')
 
 def main(_):

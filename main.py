@@ -5,15 +5,16 @@ import numpy as np
 from agents import make_agent, get_agent_class
 from hpsearch.hyperband import Hyperband, run_params
 from hpsearch import fullsearch
+from hpsearch import randomsearch
 
 dir = os.path.dirname(os.path.realpath(__file__))
 
 flags = tf.app.flags
 
 # HP search
+flags.DEFINE_boolean('randomsearch', False, 'Perform a random search fixing one HP at a time')
 flags.DEFINE_boolean('fullsearch', False, 'Perform a full search of hyperparameter space (hyperband -> lr search -> hyperband with best lr)')
 flags.DEFINE_string('fixed_params', "{}", 'JSON inputs to fix some params in a random search, ex: \'{"lr": 0.001}\'')
-
 # Hyperband
 flags.DEFINE_boolean('hyperband', False, 'Perform a hyperband search of hyperparameters')
 flags.DEFINE_boolean('dry_run', False, 'Perform a hyperband dry_run')
@@ -57,6 +58,11 @@ def main(_):
     config = flags.FLAGS.__flags.copy()
     config["fixed_params"] = json.loads(config["fixed_params"])
 
+    # if os.path.isfile(config['result_dir'] + '/config.json'):
+    #     print("Overriding shell configuration with the one found in " + config['result_dir'])
+    #     with open(config['result_dir'] + '/config.json', 'r') as f:
+    #         config = json.loads(f.read())
+
     if config['hyperband']:
         print('Starting hyperband search')
 
@@ -91,6 +97,14 @@ def main(_):
         best_lr = summary['results'][0]['lr']
         summary = fullsearch.third_pass(config, best_lr)
         with open(config['result_dir_prefix'] + '/fullsearch_results3.json', 'w') as f:
+            json.dump(summary, f)
+    elif config['randomsearch']:
+        print('*** Starting random search')
+        config['result_dir_prefix'] = dir + '/results/randomsearch/' + str(int(time.time())) + '-' + config['agent_name']
+        os.makedirs(config['result_dir_prefix'])
+
+        summary = randomsearch.search(config)
+        with open(config['result_dir_prefix'] + '/fullsearch_results1.json', 'w') as f:
             json.dump(summary, f)
     else:
         env = gym.make(config['env_name'])

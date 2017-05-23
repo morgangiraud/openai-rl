@@ -6,7 +6,7 @@ dir = os.path.dirname(os.path.realpath(__file__))
 
 from agents.deep_policy_agent import getExpectedRewards
 
-class TestCapacities(unittest.TestCase):
+class TestDeepPoliciAgent(unittest.TestCase):
 
     def test_get_expected_rewards(self):
         rewards = [1, 1, 2]

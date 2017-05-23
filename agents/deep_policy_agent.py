@@ -2,14 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from agents import BasicAgent, capacities
-
-def getExpectedRewards(episodeRewards):
-    expected_reward = [0] * len(episodeRewards)
-    for i in range(len(episodeRewards)):
-        for j in range(i + 1):
-            expected_reward[j] += episodeRewards[i]
-
-    return expected_reward
+from agents.capacities import getExpectedRewards
 
 class DeepMCPolicyAgent(BasicAgent):
     """

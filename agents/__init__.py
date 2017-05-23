@@ -1,10 +1,11 @@
 from agents.basic_agent import BasicAgent
-from agents.tabular_agent import TabularQAgent, BackwardTabularQAgent, TabularQERAgent, TabularFixedQERAgent, TabularQOfflineERAgent, TabularFixedQOfflineERAgent, BackwardTabularFixedQOfflineERAgent
+from agents.tabular_agent import TabularMCAgent, TabularQAgent, BackwardTabularQAgent, TabularQERAgent, TabularFixedQERAgent, TabularQOfflineERAgent, TabularFixedQOfflineERAgent, BackwardTabularFixedQOfflineERAgent
 from agents.deep_q_agent import DeepTDAgent, DeepFixedQOfflineERAgent, DQNAgent, DDQNAgent
 from agents.deep_policy_agent import DeepMCPolicyAgent, MCActorCriticAgent, ActorCriticAgent, A2CAgent, TDACAgent
 
 __all__ = [
     "BasicAgent",
+    "TabularMCAgent",
     "TabularQAgent",
     "BackwardTabularQAgent",
     "TabularQERAgent",

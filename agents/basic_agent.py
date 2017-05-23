@@ -4,13 +4,20 @@ from gym.spaces import Discrete, Box
 
 class BasicAgent(object):
     def __init__(self, config, env):
+        if not 'best' in config:
+            config['best'] = False
+        if not 'debug' in config:
+            config['debug'] = False
+        if not 'max_iter' in config:
+            config['max_iter'] = 1
         if config['best']:
             config.update(self.get_best_config(config['env_name']))
-        self.config = config
 
+        self.config = config
+        
         if config['debug']:
             print('config', config)
-
+            
         self.random_seed = config['random_seed']
         self.result_dir = config['result_dir']
         self.max_iter = config['max_iter']
@@ -98,7 +105,6 @@ class BasicAgent(object):
         if checkpoint is None:
             self.sess.run(self.init_op)
         else:
-
             if self.config['debug']:
                 print('Loading the model from folder: %s' % self.result_dir)
             self.saver.restore(self.sess, checkpoint.model_checkpoint_path)

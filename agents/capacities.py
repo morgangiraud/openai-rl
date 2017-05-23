@@ -7,29 +7,77 @@ import tensorflow as tf
 #     my_capacity()
 
 def epsGreedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
-    with tf.variable_scope('EpsilonGreedyPolicy'):
-        N0_t = tf.constant(N0, tf.float32, name='N0')
-        min_eps_t = tf.constant(min_eps, tf.float32, name='min_eps')
+    reusing_scope = tf.get_variable_scope().reuse
 
-        if nb_state == None:
-            N = tf.Variable(1., trainable=False, dtype=tf.float32, name='N')
-            eps = tf.maximum(N0_t / (N0_t + N), min_eps_t, name="eps")
-            update_N = tf.assign(N, N + 1)
+    N0_t = tf.constant(N0, tf.float32, name='N0')
+    min_eps_t = tf.constant(min_eps, tf.float32, name='min_eps')
+
+    if nb_state == None:
+        N = tf.Variable(1., trainable=False, dtype=tf.float32, name='N')
+        eps = tf.maximum(N0_t / (N0_t + N), min_eps_t, name="eps")
+        update_N = tf.assign(N, N + 1)
+        if reusing_scope is False:
             tf.summary.scalar('N', N)
-        else:
-            N = tf.Variable(tf.ones(shape=[nb_state]), name='N', trainable=False)
-            eps = tf.maximum(N0_t / (N0_t + N[inputs_t]), min_eps_t, name="eps")
-            update_N = tf.scatter_add(N, inputs_t, 1)
+    else:
+        N = tf.Variable(tf.ones(shape=[nb_state]), name='N', trainable=False)
+        eps = tf.maximum(N0_t / (N0_t + N[inputs_t]), min_eps_t, name="eps")
+        update_N = tf.scatter_add(N, inputs_t, 1)
+        if reusing_scope is False:
             tf.summary.histogram('N', N)
-        cond = tf.greater(tf.random_uniform([], 0, 1), eps)
-        pred_action = tf.cast(tf.argmax(q_preds_t, 0), tf.int32)
-        random_action = tf.random_uniform([], 0, nb_actions, dtype=tf.int32)
+    cond = tf.greater(tf.random_uniform([], 0, 1), eps)
+    pred_action = tf.cast(tf.argmax(q_preds_t, 0), tf.int32)
+    random_action = tf.random_uniform([], 0, nb_actions, dtype=tf.int32)
 
-        with tf.control_dependencies([update_N]): # Force the update call
-            action_t = tf.cond(cond, lambda: pred_action, lambda: random_action)
+    with tf.control_dependencies([update_N]): # Force the update call
+        action_t = tf.cond(cond, lambda: pred_action, lambda: random_action)
 
     return action_t
 
+def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
+    reusing_scope = tf.get_variable_scope().reuse
+
+    N0_t = tf.constant(N0, tf.float32, name='N0')
+    min_eps_t = tf.constant(min_eps, tf.float32, name='min_eps')
+
+    if nb_state == None:
+        N = tf.Variable(1., trainable=False, dtype=tf.float32, name='N')
+        eps = tf.maximum(N0_t / (N0_t + N), min_eps_t, name="eps")
+        update_N = tf.assign(N, N + 1)
+        if reusing_scope is False:
+            tf.summary.scalar('N', N)
+    else:
+        N = tf.Variable(tf.ones(shape=[nb_state]), name='N', trainable=False)
+        eps = tf.maximum(
+            N0_t / (N0_t + tf.squeeze(tf.nn.embedding_lookup(N, inputs_t), 1))
+            , min_eps_t
+            , name="eps"
+        )
+        update_N = tf.scatter_nd_add(N, inputs_t, tf.ones(shape=[tf.shape(inputs_t)[0]]))
+        if reusing_scope is False:
+            tf.summary.histogram('N', N)
+
+    nb_samples = tf.shape(q_preds_t)[0]
+
+    max_actions = tf.cast(tf.expand_dims(tf.argmax(q_preds_t, 1), -1), tf.int32)
+    random_actions = tf.random_uniform(shape=[nb_samples, 1], minval=0, maxval=nb_actions, dtype=tf.int32)
+    stacked_actions = tf.stack([random_actions, max_actions], 1)
+
+    conditions = tf.cast(tf.greater(tf.random_uniform([nb_samples], 0, 1), eps), tf.int32)
+    selects = tf.stack([tf.range(0, nb_samples), conditions], 1)
+
+    with tf.control_dependencies([update_N]): # Force the update call
+        actions_t = tf.gather_nd(stacked_actions, selects)
+
+    return actions_t
+
+def getExpectedRewards(episodeRewards):
+    expected_reward = [0] * len(episodeRewards)
+    for i in range(len(episodeRewards)):
+        for j in range(i + 1):
+            expected_reward[j] += episodeRewards[i]
+
+    return expected_reward
+    
 def eligibilityTraces(inputs, action_t, et_shape, discount, lambda_value):
     with tf.variable_scope("EligibilityTraces"):
         et = tf.Variable(
@@ -48,19 +96,16 @@ def eligibilityTraces(inputs, action_t, et_shape, discount, lambda_value):
     return (et, update_et_op, reset_et_op)
 
 
-def MSETabularQLearning(Qs_t, discount, q_preds, action_t):
-    with tf.variable_scope('MSEQLearning'):
-        reward = tf.placeholder(tf.float32, shape=[], name="reward")
-        next_state = tf.placeholder(tf.int32, shape=[], name="nextState")
+def MSETabularQLearning(Qs_t, reward, next_state, discount, q_preds, action_t):
+    # reusing_scope = tf.get_variable_scope().reuse
 
-        q_t = q_preds[action_t]
+    next_max_action_t = tf.cast(tf.argmax(Qs_t[next_state], 0), tf.int32)
+    target_q = tf.stop_gradient(reward + discount * Qs_t[next_state, next_max_action_t], name='target_q')
 
-        next_max_action_t = tf.cast(tf.argmax(Qs_t[next_state], 0), tf.int32)
-        target_q = tf.stop_gradient(reward + discount * Qs_t[next_state, next_max_action_t], name='target_q')
+    q_t = q_preds[action_t]
+    loss = tf.reduce_mean(tf.square(target_q - q_t))
 
-        loss = tf.reduce_mean(tf.square(target_q - q_t))
-
-    return (reward, next_state, loss)
+    return loss
 
 def counter(name):
     count_t = tf.Variable(0, trainable=False, dtype=tf.int32, name=name)

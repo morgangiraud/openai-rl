@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from agents import BasicAgent, phis, capacities
-from agents.capacities import getExpectedRewards
+from agents.capacities import get_expected_rewards
 
 class TabularMCAgent(BasicAgent):
     """
@@ -21,7 +21,13 @@ class TabularMCAgent(BasicAgent):
         self.initial_q_value = self.config['initial_q_value']
 
     def get_best_config(self, env_name=""):
-        return {}
+        return {
+            'lr': 0.1
+            , 'discount': 0.999 # ->1[ improve
+            , 'N0': 76 # -> ~ 75 improve
+            , 'min_eps': 0. # ->0.001[ improve
+            , 'initial_q_value': 0
+        }
 
     @staticmethod
     def get_random_config(fixed_params={}):
@@ -60,7 +66,7 @@ class TabularMCAgent(BasicAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.actions_t = capacities.eps_greedy(
+                self.actions_t = capacities.batch_eps_greedy(
                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
                 self.action_t = self.actions_t[0][0]
@@ -126,7 +132,7 @@ class TabularMCAgent(BasicAgent):
         _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
             self.inputs: history['states'],
             self.actions_ph: history['actions'],
-            self.Gs_ph: getExpectedRewards(history['rewards']),
+            self.Gs_ph: get_expected_rewards(history['rewards'], self.discount),
         })
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,
@@ -206,7 +212,7 @@ class TabularQAgent(BasicAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.action_t = capacities.epsGreedy(
+                self.action_t = capacities.eps_greedy(
                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
 
@@ -215,7 +221,7 @@ class TabularQAgent(BasicAgent):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
                 self.next_state = tf.placeholder(tf.int32, shape=[], name="nextState")
 
-                self.loss = capacities.MSETabularQLearning(
+                self.loss = capacities.mse_tabular_q_learning(
                     self.Qs, self.reward, self.next_state, self.discount, self.q_preds, self.action_t
                 )
 
@@ -337,12 +343,12 @@ class BackwardTabularQAgent(TabularQAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.action_t = capacities.epsGreedy(
+                self.action_t = capacities.eps_greedy(
                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
             self.q_t = self.q_preds[self.action_t]
 
-            et, update_et_op, self.reset_et_op = capacities.eligibilityTraces(self.inputs, self.action_t, [self.nb_state, self.action_space.n], self.discount, self.lambda_value)
+            et, update_et_op, self.reset_et_op = capacities.eligibility_traces(self.inputs, self.action_t, [self.nb_state, self.action_space.n], self.discount, self.lambda_value)
 
             with tf.variable_scope('Training'):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
@@ -440,7 +446,7 @@ class TabularQERAgent(TabularQAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.action_t = capacities.epsGreedy(
+                self.action_t = capacities.eps_greedy(
                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
 
@@ -581,11 +587,11 @@ class TabularFixedQERAgent(TabularQERAgent):
 
             fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
             with tf.variable_scope(fixed_q_scope):
-                self.update_fixed_vars_op = capacities.fixScope(q_scope)
+                self.update_fixed_vars_op = capacities.fix_scope(q_scope)
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.action_t = capacities.epsGreedy(
+                self.action_t = capacities.eps_greedy(
                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
 
@@ -741,7 +747,7 @@ class TabularQOfflineERAgent(TabularQAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.action_t = capacities.epsGreedy(
+                self.action_t = capacities.eps_greedy(
                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
 
@@ -750,7 +756,7 @@ class TabularQOfflineERAgent(TabularQAgent):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
                 self.next_state = tf.placeholder(tf.int32, shape=[], name="nextState")
 
-                self.loss = capacities.MSETabularQLearning(
+                self.loss = capacities.mse_tabular_q_learning(
                     self.Qs, self.reward, self.next_state, self.discount, self.q_preds, self.action_t
                 )
 
@@ -879,11 +885,11 @@ class TabularFixedQOfflineERAgent(TabularQOfflineERAgent):
 
             fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
             with tf.variable_scope(fixed_q_scope):
-                self.update_fixed_vars_op = capacities.fixScope(q_scope)
+                self.update_fixed_vars_op = capacities.fix_scope(q_scope)
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.action_t = capacities.epsGreedy(
+                self.action_t = capacities.eps_greedy(
                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
 
@@ -892,7 +898,7 @@ class TabularFixedQOfflineERAgent(TabularQOfflineERAgent):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
                 self.next_state = tf.placeholder(tf.int32, shape=[], name="nextState")
 
-                self.loss = capacities.MSETabularQLearning(
+                self.loss = capacities.mse_tabular_q_learning(
                     self.Qs, self.reward, self.next_state, self.discount, self.q_preds, self.action_t
                 )
 
@@ -1057,11 +1063,11 @@ class BackwardTabularFixedQOfflineERAgent(TabularQOfflineERAgent):
 
             fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
             with tf.variable_scope(fixed_q_scope):
-                self.update_fixed_vars_op = capacities.fixScope(q_scope)
+                self.update_fixed_vars_op = capacities.fix_scope(q_scope)
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.action_t = capacities.epsGreedy(
+                self.action_t = capacities.eps_greedy(
                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
             self.q_t = self.q_preds[self.action_t]

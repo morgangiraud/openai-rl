@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from agents import BasicAgent, capacities
-from agents.capacities import getExpectedRewards
+from agents.capacities import get_expected_rewards
 
 class DeepMCPolicyAgent(BasicAgent):
     """
@@ -115,7 +115,7 @@ class DeepMCPolicyAgent(BasicAgent):
         _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
             self.inputs: history['states'],
             self.actions: history['actions'],
-            self.rewards: getExpectedRewards(history['rewards']),
+            self.rewards: get_expected_rewards(history['rewards']),
         })
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,
@@ -273,7 +273,7 @@ class MCActorCriticAgent(DeepMCPolicyAgent):
         _, policy_loss, q_loss, loss = self.sess.run([self.train_op, self.policy_loss, self.q_loss, self.loss], feed_dict={
             self.inputs: history['states'],
             self.actions: history['actions'],
-            self.rewards: getExpectedRewards(history['rewards']),
+            self.rewards: get_expected_rewards(history['rewards']),
             self.next_states: history['next_states'],
             self.next_actions: history['next_actions'],
         })

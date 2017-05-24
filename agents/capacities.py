@@ -6,7 +6,7 @@ import tensorflow as tf
 # with my_graph.as_default():
 #     my_capacity()
 
-def epsGreedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
+def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
     reusing_scope = tf.get_variable_scope().reuse
 
     N0_t = tf.constant(N0, tf.float32, name='N0')
@@ -33,7 +33,7 @@ def epsGreedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
 
     return action_t
 
-def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
+def batch_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
     reusing_scope = tf.get_variable_scope().reuse
 
     N0_t = tf.constant(N0, tf.float32, name='N0')
@@ -70,15 +70,15 @@ def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
 
     return actions_t
 
-def getExpectedRewards(episodeRewards):
+def get_expected_rewards(episodeRewards, discount=1):
     expected_reward = [0] * len(episodeRewards)
     for i in range(len(episodeRewards)):
         for j in range(i + 1):
-            expected_reward[j] += episodeRewards[i]
+            expected_reward[j] += discount**(i-j) * episodeRewards[i]
 
     return expected_reward
     
-def eligibilityTraces(inputs, action_t, et_shape, discount, lambda_value):
+def eligibility_traces(inputs, action_t, et_shape, discount, lambda_value):
     with tf.variable_scope("EligibilityTraces"):
         et = tf.Variable(
             initial_value=np.zeros(et_shape)
@@ -96,7 +96,7 @@ def eligibilityTraces(inputs, action_t, et_shape, discount, lambda_value):
     return (et, update_et_op, reset_et_op)
 
 
-def MSETabularQLearning(Qs_t, reward, next_state, discount, q_preds, action_t):
+def mse_tabular_q_learning(Qs_t, reward, next_state, discount, q_preds, action_t):
     # reusing_scope = tf.get_variable_scope().reuse
 
     next_max_action_t = tf.cast(tf.argmax(Qs_t[next_state], 0), tf.int32)
@@ -113,7 +113,7 @@ def counter(name):
 
     return (count_t, inc_count_op)
 
-def fixScope(from_scope):
+def fix_scope(from_scope):
     update_fixed_vars_op = []
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=from_scope.name):
         fixed = tf.get_variable(

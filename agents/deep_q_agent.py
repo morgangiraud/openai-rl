@@ -67,7 +67,7 @@ class DeepTDAgent(BasicAgent):
             with tf.variable_scope(q_scope):
                 self.q_values = tf.squeeze(capacities.value_f(self.q_params, self.inputs))
 
-            self.action_t = capacities.epsGreedy(
+            self.action_t = capacities.eps_greedy(
                 self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
             )
             self.q_t = self.q_values[self.action_t]
@@ -222,14 +222,14 @@ class DQNAgent(DeepTDAgent):
             with tf.variable_scope(q_scope):
                 self.q_values = tf.squeeze(capacities.value_f(self.q_params, self.inputs))
 
-            self.action_t = capacities.epsGreedy(
+            self.action_t = capacities.eps_greedy(
                 self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
             )
             self.q_t = self.q_values[self.action_t]
 
             fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
             with tf.variable_scope(fixed_q_scope):
-                self.update_fixed_vars_op = capacities.fixScope(q_scope)
+                self.update_fixed_vars_op = capacities.fix_scope(q_scope)
 
             with tf.variable_scope('ExperienceReplay'):
                 self.er_inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERInputs")
@@ -353,14 +353,14 @@ class DDQNAgent(DQNAgent):
             with tf.variable_scope(q_scope):
                 self.q_values = tf.squeeze(capacities.value_f(self.q_params, self.inputs))
 
-            self.action_t = capacities.epsGreedy(
+            self.action_t = capacities.eps_greedy(
                 self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
             )
             self.q_t = self.q_values[self.action_t]
 
             fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
             with tf.variable_scope(fixed_q_scope):
-                self.update_fixed_vars_op = capacities.fixScope(q_scope)
+                self.update_fixed_vars_op = capacities.fix_scope(q_scope)
 
             with tf.variable_scope('ExperienceReplay'):
                 self.er_inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERInputs")
@@ -472,14 +472,14 @@ class DeepFixedQOfflineERAgent(DQNAgent):
             with tf.variable_scope(q_scope):
                 self.q_values = tf.squeeze(capacities.value_f(self.q_params, self.inputs))
 
-            self.action_t = capacities.epsGreedy(
+            self.action_t = capacities.eps_greedy(
                 self.inputs, self.q_values, self.env.action_space.n, self.N0, self.min_eps
             )
             self.q_t = self.q_values[self.action_t]
 
             fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
             with tf.variable_scope(fixed_q_scope):
-                self.update_fixed_vars_op = capacities.fixScope(q_scope)
+                self.update_fixed_vars_op = capacities.fix_scope(q_scope)
 
             with tf.variable_scope('Training'):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")

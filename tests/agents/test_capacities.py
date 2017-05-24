@@ -8,7 +8,7 @@ from agents import capacities
 
 class TestCapacities(unittest.TestCase):
 
-    def test_eps_greedy(self):
+    def test_batch_eps_greedy(self):
         nb_state = 3
         nb_action = 2
 
@@ -24,7 +24,7 @@ class TestCapacities(unittest.TestCase):
             q_preds = tf.squeeze(tf.nn.embedding_lookup(Qs, inputs), 1)
             # q_preds = tf.Print(q_preds, data=[q_preds], message='q_preds', summarize=6)
 
-            actions = capacities.eps_greedy(inputs, q_preds, 2, 100, 0., 5)
+            actions = capacities.batch_eps_greedy(inputs, q_preds, 2, 100, 0., 5)
             # actions = tf.Print(actions, data=[actions], message='actions')
 # 
             with tf.Session() as sess:
@@ -58,7 +58,7 @@ class TestCapacities(unittest.TestCase):
                 self.assertEqual(np.array_equal(np.round(probs, 1), [[ 0.5 , 0.5]]), True)
                 self.assertEqual(np.array_equal(actions, [[0]]), True)
 
-    def test_eligibilityTraces(self):
+    def test_eligibility_traces(self):
         with tf.Graph().as_default():
             inputs = tf.placeholder(tf.int32, shape=[])
             action_t = tf.placeholder(tf.int32, shape=[])
@@ -66,7 +66,7 @@ class TestCapacities(unittest.TestCase):
             discount = .9
             lambda_value = .9
 
-            et, update_et_op, reset_et_op = capacities.eligibilityTraces(inputs, action_t, shape, discount, lambda_value)
+            et, update_et_op, reset_et_op = capacities.eligibility_traces(inputs, action_t, shape, discount, lambda_value)
 
             with tf.Session() as sess:
                 sess.run(tf.global_variables_initializer())
@@ -79,6 +79,19 @@ class TestCapacities(unittest.TestCase):
                 _ = sess.run([reset_et_op])
                 self.assertEqual(np.array_equal(sess.run(et), [[ 0. , 0.], [ 0. , 0.], [ 0. , 0.]]), True)
 
+    def test_get_expected_rewards(self):
+        rewards = [1, 1, 2]
+        discount = 1.
+        expected_rewards = capacities.get_expected_rewards(rewards, discount)
+
+        self.assertEqual(np.array_equal(expected_rewards, [4, 3, 2]), True)
+
+    def test_get_expected_rewards(self):
+        rewards = [1, 1, 2]
+        discount = .5
+        expected_rewards = capacities.get_expected_rewards(rewards, discount)
+
+        self.assertEqual(np.array_equal(expected_rewards, [2, 2, 2]), True)
 
 if __name__ == "__main__":
     unittest.main()

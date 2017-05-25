@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from agents import BasicAgent, phis, capacities
-from agents.capacities import get_expected_rewards
+from agents.capacities import get_expected_rewards, get_lambda_expected_rewards
 
 class TabularMCAgent(BasicAgent):
     """
@@ -22,24 +22,21 @@ class TabularMCAgent(BasicAgent):
 
     def get_best_config(self, env_name=""):
         return {
-            'lr': 0.1
-            , 'discount': 0.999 # ->1[ improve
+            'discount': 0.999 # ->1[ improve
             , 'N0': 76 # -> ~ 75 improve
-            , 'min_eps': 0. # ->0.001[ improve
+            , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
         }
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
 
         random_config = {
-            'lr': get_lr()
-            , 'discount': get_discount()
+            'discount': get_discount()
             , 'N0': get_N0()
             , 'min_eps': get_min_eps()
             , 'initial_q_value': get_initial_q_value()
@@ -69,9 +66,10 @@ class TabularMCAgent(BasicAgent):
                 self.actions_t = capacities.batch_eps_greedy(
                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
-                self.action_t = self.actions_t[0][0]
+                self.action_t = self.actions_t[0]
+            self.q_value_t = self.q_preds[0][self.action_t]
 
-            learning_scope = tf.VariableScope(reuse=False, name='MSEQLearning')
+            learning_scope = tf.VariableScope(reuse=False, name='MCLearning')
             with tf.variable_scope(learning_scope):
                 self.Gs_ph = tf.placeholder(tf.float32, shape=[None], name="reward")
                 self.actions_ph = tf.placeholder(tf.int32, shape=[None, 1], name="actions_taken")
@@ -109,14 +107,12 @@ class TabularMCAgent(BasicAgent):
         return act, state_id
 
     def learn_from_episode(self, env, render=False):
-        obs = env.reset()
         score = 0
-        
         historyType = np.dtype([('states', 'int32', (1,)), ('actions', 'int32', (1,)), ('rewards', 'float32')])
         history = np.array([], dtype=historyType)
-        
         done = False
 
+        obs = env.reset()
         while not done:
             if render:
                 env.render()
@@ -140,6 +136,79 @@ class TabularMCAgent(BasicAgent):
         })
         self.sw.add_summary(summary, episode_id)
         
+class TabularLambdaAgent(TabularMCAgent):
+    """
+    Agent implementing tabular lambda return
+    """
+
+    def set_agent_props(self):
+        self.lambda_value = self.config['lambda']
+        super(TabularLambdaAgent, self).set_agent_props()
+
+    def get_best_config(self, env_name=""):
+        return {
+            'discount': 0.999 # ->1[ improve
+            , 'N0': 76 # -> ~ 75 improve
+            , 'min_eps': 0.001 # ->0.001[ improve
+            , 'initial_q_value': 0
+            , 'lambda': 0.9
+        }
+
+    @staticmethod
+    def get_random_config(fixed_params={}):
+        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_N0 = lambda: np.random.randint(1, 5e3)
+        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
+        get_lambda = lambda: np.random.rand() 
+
+        random_config = {
+            'discount': get_discount()
+            , 'N0': get_N0()
+            , 'min_eps': get_min_eps()
+            , 'initial_q_value': get_initial_q_value()
+            , 'lambda': get_lambda()
+        }
+        random_config.update(fixed_params)
+
+        return random_config
+
+    def learn_from_episode(self, env, render=False):
+        score = 0        
+        historyType = np.dtype([('states', 'int32', (1,)), ('actions', 'int32', (1,)), ('rewards', 'float32'), ('estimates', 'float32')])
+        history = np.array([], dtype=historyType)
+        done = False
+        
+        obs = env.reset()
+        act, state_id = self.act(obs)
+        while not done:
+            if render:
+                env.render()
+            
+            next_obs, reward, done, info = env.step(act)
+            next_act, next_state_id = self.act(next_obs)
+            next_estimate = self.sess.run(self.q_value_t, feed_dict={
+                self.inputs: [ [next_state_id] ]
+                , self.action_t: next_act
+            })
+
+            memory = np.array([(state_id, act, reward, next_estimate)], dtype=historyType)
+            history = np.append(history, memory)
+
+            score += reward
+            act = next_act
+            state_id = next_state_id
+
+        _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
+            self.inputs: history['states'],
+            self.actions_ph: history['actions'],
+            self.Gs_ph: get_lambda_expected_rewards(history['rewards'], history['estimates'], self.discount, self.lambda_value),
+        })
+        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
+            self.score_plh: score,
+            self.loss_plh: loss
+        })
+        self.sw.add_summary(summary, episode_id)
 
 class TabularQAgent(BasicAgent):
     """
@@ -284,6 +353,139 @@ class TabularQAgent(BasicAgent):
         self.sw.add_summary(summary, episode_id)
 
         return
+
+# class TabularNStepAgent(TabularQAgent):
+#     """
+#     Agent implementing tabular Q-learning.
+#     """
+#     def set_agent_props(self):
+#         self.n_step = self.config['n_step']
+
+#         super(TabularNStepAgent, self).__init__(config, env)
+
+#     def get_best_config(self, env_name=""):
+#         return {
+#             'lr': 0.1
+#             , 'discount': 0.999 # ->1[ improve
+#             , 'N0': 76 # -> ~ 75 improve
+#             , 'min_eps': 0.001 # ->0.001[ improve
+#             , 'initial_q_value': 0
+#             , 'n_step': 4
+#         }
+        
+
+#     @staticmethod
+#     def get_random_config(fixed_params={}):
+#         get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
+#         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+#         get_N0 = lambda: np.random.randint(1, 5e3)
+#         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+#         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
+#         get_n_step = lambda: np.random.randint(1, 200)
+
+#         random_config = {
+#             'lr': get_lr()
+#             , 'discount': get_discount()
+#             , 'N0': get_N0()
+#             , 'min_eps': get_min_eps()
+#             , 'initial_q_value': get_initial_q_value()
+#             , 'n_step': get_n_step()
+#         }
+#         random_config.update(fixed_params)
+
+#         return random_config
+
+#     def build_graph(self, graph):
+#         with graph.as_default():
+#             tf.set_random_seed(self.random_seed)
+
+#             self.inputs = tf.placeholder(tf.int32, shape=[], name="inputs")
+
+#             q_scope = tf.VariableScope(reuse=False, name='QValues')
+#             with tf.variable_scope(q_scope):
+#                 self.Qs = tf.get_variable('Qs'
+#                     , shape=[self.nb_state, self.action_space.n]
+#                     , initializer=tf.constant_initializer(self.initial_q_value)
+#                     , dtype=tf.float32
+#                 )
+#                 tf.summary.histogram('Qarray', self.Qs)
+#                 self.q_preds = self.Qs[self.inputs]
+
+#             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
+#             with tf.variable_scope(policy_scope):
+#                 self.action_t = capacities.eps_greedy(
+#                     self.inputs, self.q_preds, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
+#                 )
+
+#             learning_scope = tf.VariableScope(reuse=False, name='NStepLearning')
+#             with tf.variable_scope(learning_scope):
+#                 self.G_n = tf.placeholder(tf.float32, shape=[], name="G_n")
+#                 self.n_step_state = tf.placeholder(tf.int32, shape=[], name="nextState")
+#                 Ns = tf.Variable(tf.zeros(shape=[self.nb_state, self.action_space.n]), name='N', trainable=False)
+#                 global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+#                 inc_global_step = global_step.assign_add(1)
+
+#                 update_Ns = tf.scatter_nd_add(Ns, tf.stack([self.inputs, self.actions_t], 1), tf.ones(shape=[tf.shape(self.inputs)[0]]))
+#                 with tf.control_dependencies([update_Ns, inc_global_step]):
+#                     err_estimate = (1 / Ns[self.inputs, self.actions_t]) * (self.G_n - self.Qs[self.inputs, self.actions_t]))
+#                     self.loss = tf.reduce_sum(err_estimates)
+#                     self.train_op = tf.scatter_nd_add(self.Qs, tf.stack([self.inputs, self.actions_t], 1), err_estimate)
+            
+
+#             self.score_plh = tf.placeholder(tf.float32, shape=[])
+#             self.score_sum_t = tf.summary.scalar('score', self.score_plh)
+#             self.loss_plh = tf.placeholder(tf.float32, shape=[])
+#             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
+#             self.all_summary_t = tf.summary.merge_all()
+
+#             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+
+#             # Playing part
+#             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
+#             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
+
+#         return graph
+
+#     def learn_from_episode(self, env, render=False):
+#         obs = env.reset()
+#         score = 0
+        
+#         historyType = np.dtype([('states', 'int32', (1,)), ('actions', 'int32', (1,)), ('rewards', 'float32')])
+#         history = np.array([], dtype=historyType)
+
+#         done = False
+#         timestep = 0
+
+#         while not done:
+#             if render:
+#                 env.render()
+
+#             act, state_id = self.act(obs)
+#             next_obs, reward, done, info = env.step(act)
+
+#             memory = np.array([(state_id, act, reward)], dtype=historyType)
+#             history = np.append(history, memory)
+
+#             if timestep >= self.n_step:
+#                 n_step_state = self.phi(next_obs, done)
+#                 loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
+#                     self.inputs: history['states'][timestep - n_step],
+#                     self.action_t: history['actions'][timestep - n_step],
+#                     self.G_n: get_expected_rewards(history['actions'][timestep - n_step:])[0],
+#                     self.n_step_state: n_step_state,
+#                 })
+
+#             timestep += 1
+#             score += reward
+#             obs = next_obs
+
+#         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
+#             self.score_plh: score,
+#             self.loss_plh: np.mean(av_loss),
+#         })
+#         self.sw.add_summary(summary, episode_id)
+
+#         return
 
 class BackwardTabularQAgent(TabularQAgent):
     """

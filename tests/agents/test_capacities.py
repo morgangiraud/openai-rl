@@ -86,12 +86,48 @@ class TestCapacities(unittest.TestCase):
 
         self.assertEqual(np.array_equal(expected_rewards, [4, 3, 2]), True)
 
-    def test_get_expected_rewards(self):
+    def test_get_expected_rewards_with_discount(self):
         rewards = [1, 1, 2]
         discount = .5
         expected_rewards = capacities.get_expected_rewards(rewards, discount)
 
         self.assertEqual(np.array_equal(expected_rewards, [2, 2, 2]), True)
+
+    def test_get_n_step_expected_rewards(self):
+        rewards = [1, 1, 2, 5]
+        estimates = [0.1, 0.2, 0.3, 0]
+        discount = 1.
+        expected_rewards_td0 = capacities.get_n_step_expected_rewards(rewards, estimates, discount, 0)
+        expected_rewards_td1 = capacities.get_n_step_expected_rewards(rewards, estimates, discount, 1)
+        expected_rewards_mc = capacities.get_n_step_expected_rewards(rewards, estimates, discount, 5)
+
+        self.assertEqual(np.array_equal(expected_rewards_td0, [1.1, 1.2, 2.3, 5]), True)
+        self.assertEqual(np.array_equal(expected_rewards_td1, [2.2, 3.3, 7, 5]), True)
+        self.assertEqual(np.array_equal(expected_rewards_mc, [9, 8, 7, 5]), True)
+
+    def test_get_n_step_expected_rewards_with_discount(self):
+        rewards = [1, 1, 2, 5]
+        estimates = [0.1, 0.2, 0.3, 0]
+        discount = .5
+        expected_rewards_td0 = capacities.get_n_step_expected_rewards(rewards, estimates, discount, 0)
+        expected_rewards_td1 = capacities.get_n_step_expected_rewards(rewards, estimates, discount, 1)
+        expected_rewards_mc = capacities.get_n_step_expected_rewards(rewards, estimates, discount, 5)
+
+        self.assertEqual(np.array_equal(expected_rewards_td0, [1.05, 1.1, 2.15, 5]), True)
+        self.assertEqual(np.array_equal(expected_rewards_td1, [1.55, 2.075, 4.5, 5]), True)
+        self.assertEqual(np.array_equal(expected_rewards_mc, [2.625, 3.25, 4.5, 5]), True)
+
+    def test_get_lambda_expected_rewards(self):
+        rewards = [1, 1, 2, 5]
+        estimates = [0.1, 0.2, 0.3, 0]
+        discount = 1.
+        expected_rewards_td0 = capacities.get_lambda_expected_rewards(rewards, estimates, discount, 0.)
+        expected_rewards_lambda = capacities.get_lambda_expected_rewards(rewards, estimates, discount, 0.5)
+        expected_rewards_mc = capacities.get_lambda_expected_rewards(rewards, estimates, discount, 1.)
+
+        self.assertEqual(np.array_equal(expected_rewards_td0, [1.1, 1.2, 2.3, 5]), True)
+        self.assertEqual(np.sum(np.isclose(expected_rewards_lambda, [1.5125, 1.55, 1.65, 2.5])) == 4, True)
+        self.assertEqual(np.array_equal(expected_rewards_mc, [9, 8, 7, 5]), True)
 
 if __name__ == "__main__":
     unittest.main()

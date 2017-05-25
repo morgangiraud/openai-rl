@@ -76,12 +76,13 @@ class DeepTDAgent(BasicAgent):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
                 self.next_state = tf.placeholder(tf.float32, shape=[1, self.observation_space.shape[0] + 1], name="nextState")
                 self.next_action = tf.placeholder(tf.int32, shape=[], name="nextAction")
+
                 with tf.variable_scope(q_scope, reuse=True):
                     next_q_values = tf.squeeze(capacities.value_f(self.q_params, self.next_state))
                 target_q1 = tf.stop_gradient(self.reward + self.discount * next_q_values[self.next_action])
                 target_q2 = self.reward
-                is_done = tf.equal(self.next_state[0, 4], 1)
-                target_q = tf.cond(is_done, lambda: target_q2, lambda: target_q1)
+                is_done = tf.cast(self.next_state[0, 4], tf.bool)
+                target_q = tf.where(is_done, target_q2, target_q1)
                 with tf.control_dependencies([target_q]):
                     self.loss = 1/2 * tf.square(target_q - self.q_t)
 
@@ -489,8 +490,8 @@ class DeepFixedQOfflineERAgent(DQNAgent):
                 next_max_action_t = tf.cast(tf.argmax(next_q_values, 0), tf.int32)
                 target_q1 = tf.stop_gradient(self.reward + self.discount * next_q_values[next_max_action_t])
                 target_q2 = self.reward
-                is_done = tf.equal(self.next_state[0, 4], 1)
-                target_q = tf.cond(is_done, lambda: target_q2, lambda: target_q1)
+                is_done = tf.cast(self.next_state[0, 4], tf.bool)
+                target_q = tf.where(is_done, target_q2, target_q1)
                 with tf.control_dependencies([target_q]):
                     self.loss = 1/2 * tf.square(target_q - self.q_t)
 

@@ -29,7 +29,7 @@ def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
     random_action = tf.random_uniform([], 0, nb_actions, dtype=tf.int32)
 
     with tf.control_dependencies([update_N]): # Force the update call
-        action_t = tf.cond(cond, lambda: pred_action, lambda: random_action)
+        action_t = tf.where(cond, pred_action, random_action)
 
     return action_t
 
@@ -58,26 +58,53 @@ def batch_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None
 
     nb_samples = tf.shape(q_preds_t)[0]
 
-    max_actions = tf.cast(tf.expand_dims(tf.argmax(q_preds_t, 1), -1), tf.int32)
-    random_actions = tf.random_uniform(shape=[nb_samples, 1], minval=0, maxval=nb_actions, dtype=tf.int32)
-    stacked_actions = tf.stack([random_actions, max_actions], 1)
-
-    conditions = tf.cast(tf.greater(tf.random_uniform([nb_samples], 0, 1), eps), tf.int32)
-    selects = tf.stack([tf.range(0, nb_samples), conditions], 1)
+    conditions = tf.greater(tf.random_uniform([nb_samples], 0, 1), eps)
+    max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32)
+    random_actions = tf.random_uniform(shape=[nb_samples], minval=0, maxval=nb_actions, dtype=tf.int32)
 
     with tf.control_dependencies([update_N]): # Force the update call
-        actions_t = tf.gather_nd(stacked_actions, selects)
+        actions_t = tf.where(conditions, max_actions, random_actions)
 
     return actions_t
 
-def get_expected_rewards(episodeRewards, discount=1):
+def get_expected_rewards(episodeRewards, discount=.99):
     expected_reward = [0] * len(episodeRewards)
-    for i in range(len(episodeRewards)):
-        for j in range(i + 1):
-            expected_reward[j] += discount**(i-j) * episodeRewards[i]
+    for t in range(len(episodeRewards) - 1, -1, -1):
+        if t == len(episodeRewards) - 1:
+            expected_reward[t] = episodeRewards[t]
+        else:
+            expected_reward[t] = discount * expected_reward[t + 1] + episodeRewards[t]
 
     return expected_reward
-    
+
+def get_n_step_expected_rewards(episodeRewards, estimates, discount=.99, n_step=0):
+    expected_reward = [0] * len(episodeRewards)
+    for t in range(len(episodeRewards)):
+        if t + n_step < len(episodeRewards):
+            expected_reward[t] = estimates[t + n_step]
+            for t_2 in range(t+n_step, t - 1, -1):
+                expected_reward[t] = episodeRewards[t_2] + discount * expected_reward[t]
+        else:
+            for t_2 in range(len(episodeRewards) - 1, t - 1, -1):
+                expected_reward[t] = episodeRewards[t_2] + discount * expected_reward[t]
+
+    return expected_reward
+
+def get_lambda_expected_rewards(episodeRewards, estimates, discount=.99, lambda_value=.9):
+    if lambda_value == 1.: # In this case this leads to MC 
+        return get_expected_rewards(episodeRewards, discount)
+
+    expected_reward = np.array([0.] * len(episodeRewards))
+    for i in range(len(episodeRewards)):
+        rewards = np.concatenate( (episodeRewards[:len(episodeRewards)-i], np.zeros(i)) )
+        n_step_returns = np.array(get_n_step_expected_rewards(rewards, estimates, discount, i))
+        if i == len(episodeRewards) - 1:
+            expected_reward += lambda_value**i * n_step_returns
+        else:
+            expected_reward += (1-lambda_value) * lambda_value**i * n_step_returns
+
+    return expected_reward
+
 def eligibility_traces(inputs, action_t, et_shape, discount, lambda_value):
     with tf.variable_scope("EligibilityTraces"):
         et = tf.Variable(

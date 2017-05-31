@@ -16,11 +16,13 @@ class TestTabularAgent(unittest.TestCase):
         pass
 
     def tearDown(self):
-        shutil.rmtree(dir + '/results/')
+        if os.path.isdir(dir + '/results/'):
+            shutil.rmtree(dir + '/results/')
 
     def test_mcagent_act(self):
         config = {
-            'agent_name': 'TabularMCAgent'
+            'lr': 1 # unused
+            , 'agent_name': 'TabularMCAgent'
             , 'env_name': 'CartPole-v0'
             , 'random_seed': 0
             , 'result_dir': dir + '/results'
@@ -40,7 +42,8 @@ class TestTabularAgent(unittest.TestCase):
 
     def test_mcagent_learn_from_episode(self):
         config = {
-            'agent_name': 'TabularMCAgent'
+            'lr': 1 # unused
+            , 'agent_name': 'TabularMCAgent'
             , 'env_name': 'CartPole-v0'
             , 'random_seed': 0
             , 'result_dir': dir + '/results'
@@ -58,8 +61,9 @@ class TestTabularAgent(unittest.TestCase):
         agent.learn_from_episode(env)
 
         qs = agent.sess.run(agent.Qs)
-        self.assertEqual(qs[141][0], 17.)
-        self.assertEqual(qs[141][1], 15.5)
+        # for i,q in enumerate(qs):
+        #     print(i,q)
+        self.assertEqual(np.array_equal(qs[201], [22.75, 21.]), True)
 
 
 if __name__ == "__main__":

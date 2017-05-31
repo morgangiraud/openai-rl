@@ -1,8 +1,9 @@
-import os, sys, unittest
+import os, sys, unittest, timeit
 import numpy as np
 import tensorflow as tf
 
 dir = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(dir + '/../..')
 
 from agents import capacities
 
@@ -31,9 +32,8 @@ class TestCapacities(unittest.TestCase):
                 sess.run(tf.global_variables_initializer())
 
                 inputs, actions = sess.run([inputs, actions])
-                
                 self.assertEqual(np.array_equal(inputs, [ [ 2 ], [ 1 ] ]), True)
-                self.assertEqual(np.array_equal(actions, [ [ 1 ], [ 1 ] ]), True)
+                self.assertEqual(np.array_equal(actions, [ 0,  0 ]), True)
 
     def test_policy(self):
         policy_params = {
@@ -79,16 +79,22 @@ class TestCapacities(unittest.TestCase):
                 _ = sess.run([reset_et_op])
                 self.assertEqual(np.array_equal(sess.run(et), [[ 0. , 0.], [ 0. , 0.], [ 0. , 0.]]), True)
 
-    def test_get_expected_rewards(self):
+    def test_get_mc_target(self):
+        discount = .5
         rewards = [1, 1, 2]
-        discount = 1.
-        expected_rewards = capacities.get_expected_rewards(rewards, discount)
 
-        self.assertEqual(np.array_equal(expected_rewards, [4, 3, 2]), True)
+        rewards_plh = tf.placeholder(tf.float32, shape=[None])
+        target_t = capacities.get_mc_target(rewards_plh, discount)
+        with tf.Session() as sess:
+            target = sess.run(target_t, feed_dict={rewards_plh: rewards})
+            # print('10000 call:', timeit.timeit(lambda: sess.run(target_t, feed_dict={rewards_plh: rewards}), number=10000))
+
+        self.assertEqual(np.array_equal(target, [2, 2, 2]), True)
 
     def test_get_expected_rewards_with_discount(self):
         rewards = [1, 1, 2]
         discount = .5
+        
         expected_rewards = capacities.get_expected_rewards(rewards, discount)
 
         self.assertEqual(np.array_equal(expected_rewards, [2, 2, 2]), True)

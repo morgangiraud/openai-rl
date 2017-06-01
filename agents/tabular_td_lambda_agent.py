@@ -47,8 +47,8 @@ class TabularTDLambdaAgent(TabularMCAgent):
 
         return random_config
 
-    def act(self, obs):
-        state_id = self.phi(obs)
+    def act(self, obs, done=False):
+        state_id = self.phi(obs, done)
         act, estimate = self.sess.run([self.action_t, self.q_value_t], feed_dict={
             self.inputs_plh: [ state_id ]
         })
@@ -115,7 +115,7 @@ class TabularTDLambdaAgent(TabularMCAgent):
                 env.render()
             
             next_obs, reward, done, info = env.step(act)
-            next_act, next_state_id, next_estimate = self.act(next_obs)
+            next_act, next_state_id, next_estimate = self.act(next_obs, done)
 
             memory = np.array([(state_id, act, reward, next_estimate)], dtype=historyType)
             history = np.append(history, memory)

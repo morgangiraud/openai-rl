@@ -16,9 +16,9 @@ class TabularTD0Agent(TabularMCAgent):
 
     def get_best_config(self, env_name=""):
         return {
-            'lr': 2e-1
+            'lr': .2
             , 'discount': 0.999 # ->1[ improve
-            , 'N0': 200 # -> ~ 75 improve
+            , 'N0': 75 # -> ~ 75 improve
             , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
         }
@@ -101,13 +101,13 @@ class TabularTD0Agent(TabularMCAgent):
         done = False
 
         obs = env.reset()
-        act, state_id = self.act(obs)
+        act, state_id = self.act(obs, done)
         while not done:
             if render:
                 env.render()
 
             next_obs, reward, done, info = env.step(act)
-            next_act, next_state_id = self.act(next_obs)
+            next_act, next_state_id = self.act(next_obs, done)
 
             loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
                 self.inputs_plh: [ state_id ],

@@ -85,8 +85,8 @@ class TabularMCAgent(TabularBasicAgent):
 
         return graph
 
-    def act(self, obs):
-        state_id = self.phi(obs)
+    def act(self, obs, done=False):
+        state_id = self.phi(obs, done)
         act = self.sess.run(self.action_t, feed_dict={
             self.inputs_plh: [ state_id ]
         })

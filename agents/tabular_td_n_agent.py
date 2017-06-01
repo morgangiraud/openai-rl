@@ -23,7 +23,7 @@ class TabularTDNAgent(TabularMCAgent):
             , 'N0': 76 # -> ~ 75 improve
             , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
-            , 'n_step': 4 # who knows?
+            , 'n_step': 10
         }
 
     @staticmethod
@@ -47,8 +47,8 @@ class TabularTDNAgent(TabularMCAgent):
 
         return random_config
 
-    def act(self, obs):
-        state_id = self.phi(obs)
+    def act(self, obs, done=False):
+        state_id = self.phi(obs, done)
         act, estimate = self.sess.run([self.action_t, self.q_value_t], feed_dict={
             self.inputs_plh: [ state_id ]
         })
@@ -81,9 +81,7 @@ class TabularTDNAgent(TabularMCAgent):
 
             learning_scope = tf.VariableScope(reuse=False, name='TDLearning')
             with tf.variable_scope(learning_scope):
-                self.rewards_plh = tf.placeholder(tf.float32, shape=[None], name="rewards_plh")
-
-                self.targets_t = capacities.get_mc_target(self.rewards_plh, self.discount)
+                self.targets_t = tf.placeholder(tf.float32, shape=[None], name="targets_t")
                 self.loss, self.train_op = capacities.tabular_learning_with_lr(
                     self.lr, self.Qs, self.inputs_plh, self.actions_t, self.targets_t
                 )
@@ -116,7 +114,7 @@ class TabularTDNAgent(TabularMCAgent):
                 env.render()
 
             next_obs, reward, done, info = env.step(act)
-            next_act, next_state_id, next_estimate = self.act(next_obs)
+            next_act, next_state_id, next_estimate = self.act(next_obs, done)
 
             memory = np.array([(state_id, act, reward, next_estimate)], dtype=historyType)
             history = np.append(history, memory)

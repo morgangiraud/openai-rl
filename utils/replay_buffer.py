@@ -22,6 +22,9 @@ class ReplayBuffer:
             buffers[name] = buf
         return buffers
 
+    def reset(self):
+        return [b.assign([0] * self.capacity) for key,b in self.buffers.items()] + [self.index.assign(0)]
+
     def size(self):
         return tf.minimum(self.index, self.capacity)
 

@@ -1,5 +1,11 @@
-from agents.basic_agent import BasicAgent
-from agents.tabular_agent import TabularMCAgent, TabularTD0Agent, TabularNStepAgent, TabularLambdaAgent, TabularQAgent, BackwardTabularQAgent, TabularQERAgent, TabularFixedQERAgent, TabularQOfflineERAgent, TabularFixedQOfflineERAgent, BackwardTabularFixedQOfflineERAgent
+from agents.basic_agent import BasicAgent, TabularBasicAgent
+from agents.tabular_mc_agent import TabularMCAgent
+from agents.tabular_td_0_agent import TabularTD0Agent
+from agents.tabular_td_n_agent import TabularTDNAgent
+from agents.tabular_td_lambda_agent import TabularTDLambdaAgent
+from agents.tabular_q_agent import TabularQAgent
+from agents.tabular_q_lambda_backward_agent import TabularQLambdaBackwardAgent
+from agents.tabular_agent import TabularQERAgent, TabularFixedQERAgent
 from agents.deep_q_agent import DeepTDAgent, DeepFixedQOfflineERAgent, DQNAgent, DDQNAgent
 from agents.deep_policy_agent import DeepMCPolicyAgent, MCActorCriticAgent, ActorCriticAgent, A2CAgent, TDACAgent
 
@@ -7,15 +13,12 @@ __all__ = [
     "BasicAgent",
     "TabularMCAgent",
     "TabularTD0Agent",
-    "TabularNStepAgent",
-    "TabularLambdaAgent",
+    "TabularTDNAgent",
+    "TabularTDLambdaAgent",
     "TabularQAgent",
-    "BackwardTabularQAgent",
+    "TabularQLambdaBackwardAgent",
     "TabularQERAgent",
     "TabularFixedQERAgent",
-    "TabularQOfflineERAgent",
-    "TabularFixedQOfflineERAgent",
-    "BackwardTabularFixedQOfflineERAgent",
     "DeepTDAgent",
     "DeepFixedQOfflineERAgent",
     "DQNAgent",

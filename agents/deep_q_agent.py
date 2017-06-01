@@ -16,6 +16,8 @@ class DeepTDAgent(BasicAgent):
             , 'initial_stddev': self.config['initial_stddev']
         }
 
+        self.lr = config['lr']
+        self.discount = config['discount']
         self.N0 = self.config['N0']
         self.min_eps = self.config['min_eps']
 
@@ -157,7 +159,7 @@ class DQNAgent(DeepTDAgent):
     """
     def set_agent_props(self):
         super(DQNAgent, self).set_agent_props()
-
+        
         self.er_every = self.config['er_every']
         self.er_batch_size = self.config['er_batch_size']
         self.er_rm_size = self.config['er_rm_size']

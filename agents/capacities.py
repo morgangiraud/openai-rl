@@ -48,11 +48,11 @@ def batch_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None
     else:
         N = tf.Variable(tf.ones(shape=[nb_state]), name='N', trainable=False)
         eps = tf.maximum(
-            N0_t / (N0_t + tf.squeeze(tf.nn.embedding_lookup(N, inputs_t), 1))
+            N0_t / (N0_t + tf.gather(N, inputs_t))
             , min_eps_t
             , name="eps"
         )
-        update_N = tf.scatter_nd_add(N, inputs_t, tf.ones(shape=[tf.shape(inputs_t)[0]]))
+        update_N = tf.scatter_add(N, inputs_t, tf.ones_like(inputs_t, dtype=tf.float32))
         if reusing_scope is False:
             tf.summary.histogram('N', N)
 
@@ -125,30 +125,33 @@ def get_lambda_expected_rewards(episode_rewards, estimates, discount=.99, lambda
 
     return expected_reward
 
-def eligibility_traces(inputs, action_t, et_shape, discount, lambda_value):
-    with tf.variable_scope("EligibilityTraces"):
-        et = tf.Variable(
-            initial_value=np.zeros(et_shape)
-            , name="EligibilityTraces"
-            , dtype=tf.float32
-            , trainable=False
-        )
-        tf.summary.histogram('ETarray', et)
-        dec_et_op = tf.assign(et, discount * lambda_value * et)
-        with tf.control_dependencies([dec_et_op]):
-            update_et_op = tf.scatter_nd_update(et, indices=[[inputs, action_t]], updates=[1.])
+def eligibility_traces(Qs_t, states_t, actions_t, discount, lambda_value):
+    et = tf.Variable(
+        initial_value=tf.zeros_like(Qs_t)
+        , name="EligibilityTraces"
+        , dtype=tf.float32
+        , trainable=False
+    )
+    tf.summary.histogram('ETarray', et)
+    dec_et_op = tf.assign(et, discount * lambda_value * et)
+    with tf.control_dependencies([dec_et_op]):
+        state_action_pairs = tf.stack([states_t, actions_t], 1)
+        update_et_op = tf.scatter_nd_update(et, indices=state_action_pairs, updates=tf.ones_like(states_t, dtype=tf.float32))
 
-        reset_et_op = et.assign(np.zeros(et_shape))
+    reset_et_op = et.assign(tf.zeros_like(et))
 
     return (et, update_et_op, reset_et_op)
 
 
 def get_mc_target(rewards_t, discount):
     discounts = discount ** tf.cast(tf.range(tf.shape(rewards_t)[0]), dtype=tf.float32)
-    return tf.cumsum(rewards_t * discounts, reverse=True) / discounts
+    epsilon = 1e-7
+    return tf.cumsum(rewards_t * discounts, reverse=True) / (discounts + epsilon)
 
-def get_td_target(Qs_t, reward_t, next_state_t, next_action_t, discount):
-    return tf.stop_gradient(reward_t + discount * Qs_t[next_state_t, next_action_t], name='td_target')
+def get_td_target(Qs_t, rewards_t, next_states_t, next_actions_t, discount):
+    state_action_pairs = tf.stack([next_states_t, next_actions_t], 1)
+    next_estimates = tf.gather_nd(Qs_t, state_action_pairs)
+    return tf.stop_gradient(rewards_t + discount * next_estimates, name='td_target')
 
 def get_td_n_target(Qs_t, rewards_t, next_state_t, next_action_t, discount, n_step):
     cond = tf.greater(tf.shape(rewards_t)[0] > n_step)
@@ -156,34 +159,50 @@ def get_td_n_target(Qs_t, rewards_t, next_state_t, next_action_t, discount, n_st
     discounts = discount ** tf.cast(tf.range(n_step + 1), dtype=tf.float32)
     return tf.stop_gradient(tf.reduce_sum(rewards_t[- (n_step + 1):] * discounts) + estimate)
 
-def get_q_learning_target(Qs_t, reward_t, next_state_t, discount):
-    next_max_action_t = tf.cast(tf.argmax(Qs_t[next_state_t], 0), tf.int32)
-    return tf.stop_gradient(reward_t + discount * Qs_t[next_state_t, next_max_action_t], name='q_learning_target')
+def get_q_learning_target(Qs_t, rewards_t, next_states_t, discount):
+    next_qs = tf.gather(Qs_t, next_states_t)
+    next_max_actions_t = tf.cast(tf.argmax(next_qs, 1), tf.int32)
+    state_action_pairs = tf.stack([next_states_t, next_max_actions_t], 1)
+    next_estimates = tf.gather_nd(Qs_t, state_action_pairs)
+    return tf.stop_gradient(rewards_t + discount * next_estimates, name='q_learning_target')
 
-def get_expected_sarsa_target(Qs_t, reward_t, next_state_t, discount):
-    return tf.stop_gradient(reward_t + discount * tf.reduce_mean(Qs_t[next_state_t]), name='expected_sarsa_target')
+def get_expected_sarsa_target(Qs_t, rewards_t, next_states_t, discount):
+    next_qs = tf.gather(Qs_t, next_states_t)
+    next_estimates = tf.reduce_mean(next_qs, 1)
+    return tf.stop_gradient(rewards_t + discount * next_estimates, name='expected_sarsa_target')
 
-def mse_tabular_q_learning(Qs_t, reward, next_state, discount, q_preds, action_t):
-    # reusing_scope = tf.get_variable_scope().reuse
+def tabular_learning(Qs_t, states_t, actions_t, targets):
+    state_action_pairs = tf.stack([states_t, actions_t], 1)
+    estimates = tf.gather_nd(Qs_t, state_action_pairs)
+    err_estimates = targets - estimates
+    loss = tf.reduce_mean(err_estimates)
 
-    next_max_action_t = tf.cast(tf.argmax(Qs_t[next_state], 0), tf.int32)
-    target_q = tf.stop_gradient(reward + discount * Qs_t[next_state, next_max_action_t], name='target_q')
-
-    q_t = q_preds[action_t]
-    loss = tf.reduce_mean(tf.square(target_q - q_t))
-
-    return loss
-
-def tabular_td_learning(Qs_t, state, action, target):
-    estimate = Qs_t[state, action]
-    
-    optimizer = tf.Variable(tf.zeros(shape=tf.shape(Qs_t)), name='N', trainable=False)
-    update_optimizer = tf.scatter_nd_add(optimizer, [[state, action]], [1])
+    optimizer = tf.Variable(tf.zeros_like(Qs_t), name='optimizer', trainable=False)
+    update_optimizer = tf.scatter_nd_add(optimizer, state_action_pairs, tf.ones_like(states_t, dtype=tf.float32))
     global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
     inc_global_step = global_step.assign_add(1)
     with tf.control_dependencies([update_optimizer, inc_global_step]):
-        loss = target - estimate
-        train_op = tf.scatter_nd_add(Qs_t, [[state, action]], [(1 / optimizer[state, action]) * loss])
+        updates = (1 / tf.gather_nd(optimizer, state_action_pairs)) * err_estimates
+        train_op = tf.scatter_nd_add(Qs_t, state_action_pairs, updates)
+
+    return loss, train_op
+
+def tabular_learning_with_lr(init_lr, Qs_t, states_t, actions_t, targets):
+    reusing_scope = tf.get_variable_scope().reuse
+
+    state_action_pairs = tf.stack([states_t, actions_t], 1)
+    estimates = tf.gather_nd(Qs_t, state_action_pairs)
+    err_estimates = targets - estimates
+    loss = tf.reduce_mean(err_estimates)
+
+    global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+    lr = tf.train.exponential_decay(init_lr, global_step, 50000, 0.5, staircase=True)
+    if reusing_scope is False:
+        tf.summary.scalar('lr', lr)
+    inc_global_step = global_step.assign_add(1)
+    with tf.control_dependencies([inc_global_step]):
+        updates = lr * err_estimates
+        train_op = tf.scatter_nd_add(Qs_t, state_action_pairs, updates)
 
     return loss, train_op
 

@@ -16,6 +16,8 @@ class DeepMCPolicyAgent(BasicAgent):
             , 'initial_mean': self.config['initial_mean']
             , 'initial_stddev': self.config['initial_stddev']
         }
+        self.lr = config['lr']
+        self.discount = config['discount']
 
     def get_best_config(self, env_name=""):
         return {

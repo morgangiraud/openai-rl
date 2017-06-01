@@ -2,6 +2,8 @@ import json, os
 import tensorflow as tf
 from gym.spaces import Discrete, Box
 
+from utils import phis
+
 class BasicAgent(object):
     def __init__(self, config, env):
         if not 'best' in config:
@@ -33,9 +35,6 @@ class BasicAgent(object):
         if not isinstance(env.action_space, Discrete):
             raise Exception('Action space {} incompatible with {}. (Only supports Discrete action spaces.)'.format(action_space, self))
         self.action_space = env.action_space
-
-        self.lr = config['lr']
-        self.discount = config['discount']
 
         # Set custom properties of the agent
         self.set_agent_props()
@@ -132,3 +131,14 @@ class BasicAgent(object):
         self.sw.add_summary(pscore_sum, self.play_counter)
 
         return score
+
+class TabularBasicAgent(BasicAgent):
+    """
+    Agent implementing tabular Q-learning.
+    """
+    def __init__(self, config, env):
+        if 'debug' in config:
+            config.update(phis.getPhiConfig(config['env_name'], config['debug']))
+        else:
+            config.update(phis.getPhiConfig(config['env_name']))
+        super(TabularBasicAgent, self).__init__(config, env)

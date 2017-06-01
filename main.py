@@ -39,10 +39,10 @@ flags.DEFINE_integer('N0', 100, 'Offset used in the decay algorithm of epsilon')
 flags.DEFINE_float('min_eps', 1e-2, 'Limit after which the decay stops')
 
 # Experience replay
-flags.DEFINE_integer('er_every', 20, 'If the model can handle async experience replay, use it every n episode_id')
 flags.DEFINE_integer('er_batch_size', 512, 'Batch size of the experience replay learning')
 flags.DEFINE_integer('er_epoch_size', 50, 'Number of sampled contained in an epoch of experience replay')
 flags.DEFINE_integer('er_rm_size', 20000, 'Size of the replay memory buffer')
+flags.DEFINE_integer('update_every', 20, 'Update the fixed Q network every chosen step')
 
 # Environment
 flags.DEFINE_string('env_name', 'CartPole-v0', 'The name of gym environment to use')

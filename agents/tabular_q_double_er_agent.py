@@ -1,47 +1,39 @@
 import numpy as np
 import tensorflow as tf
 
-from agents import TabularBasicAgent, capacities
+from agents import TabularQERAgent, capacities
 
-class TabularQAgent(TabularBasicAgent):
+class TabularQDoubleERAgent(TabularQERAgent):
     """
-    Agent implementing tabular Q-learning.
+    Agent implementing tabular Q-learning with experience replay and a second fixed network.
     """
-    def set_agent_props(self):
-        self.lr = self.config['lr']
-        self.discount = self.config['discount']
-        self.N0 = self.config['N0']
-        self.min_eps = self.config['min_eps']
-        self.initial_q_value = self.config['initial_q_value']
+    def __init__(self, config, env):
+        super(TabularQDoubleERAgent, self).__init__(config, env)
+
+        self.update_every = config['update_every']
 
     def get_best_config(self, env_name=""):
-        cartpolev0 = {
-            'lr': 2e-1
-            , 'discount': 0.999 # ->1[ improve
-            , 'N0': 500 # -> ~ 75 improve
-            , 'min_eps': 0.001 # ->0.001[ improve
-            , 'initial_q_value': 0
-        }
-        mountaincarv0 = {
-            'lr': 1
+        return {
+            'lr': 0.03
             , 'discount': 0.999
             , 'N0': 75
-            , 'min_eps': 0.001
+            , 'min_eps': 0.005
             , 'initial_q_value': 0
+            , 'er_batch_size': 783
+            , 'er_rm_size': 36916
+            , "update_every": 200
         }
-        return {
-            'CartPole-v0': cartpolev0
-            , 'MountainCar-v0': mountaincarv0
-        }.get(env_name, cartpolev0)
-        
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
+        get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
+        get_er_batch_size = lambda: np.random.randint(16, 1024)
+        get_er_rm_size = lambda: np.random.randint(1000, 50000)
+        get_update_every = lambda: np.random.randint(1, 1000)
 
         random_config = {
             'lr': get_lr()
@@ -49,6 +41,9 @@ class TabularQAgent(TabularBasicAgent):
             , 'N0': get_N0()
             , 'min_eps': get_min_eps()
             , 'initial_q_value': get_initial_q_value()
+            , 'er_batch_size': get_er_batch_size()
+            , 'er_rm_size': get_er_rm_size()
+            , 'update_every': get_update_every()
         }
         random_config.update(fixed_params)
 
@@ -70,6 +65,10 @@ class TabularQAgent(TabularBasicAgent):
                 tf.summary.histogram('Qarray', self.Qs)
                 self.q_preds_t = tf.gather(self.Qs, self.inputs_plh)
 
+            fixed_q_scope = tf.VariableScope(reuse=False, name='FixedQValues')
+            with tf.variable_scope(fixed_q_scope):
+                self.update_fixed_vars_op = capacities.fix_scope(q_scope)
+
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
                 self.actions_t = capacities.batch_eps_greedy(
@@ -78,15 +77,16 @@ class TabularQAgent(TabularBasicAgent):
                 self.action_t = self.actions_t[0]
                 self.q_value_t = self.q_preds_t[0][self.action_t]
 
-            learning_scope = tf.VariableScope(reuse=False, name='QLearning')
-            with tf.variable_scope(learning_scope):
+            # Experienced replay part
+            with tf.variable_scope('ExperienceReplay'):
+                with tf.variable_scope(fixed_q_scope, reuse=True):
+                    fixed_Qs = tf.get_variable('Qs')
+
                 self.rewards_plh = tf.placeholder(tf.float32, shape=[None], name="rewards_plh")
                 self.next_states_plh = tf.placeholder(tf.int32, shape=[None], name="next_states_plh")
 
-                self.targets_t = capacities.get_q_learning_target(self.Qs, self.rewards_plh, self.next_states_plh, self.discount)
-                # self.loss, self.train_op = capacities.tabular_learning(
-                #     self.Qs, self.inputs_plh, self.actions_t, self.targets_t
-                # )
+                # Note that we use the fixed Qs to create the targets
+                self.targets_t = capacities.get_q_learning_target(fixed_Qs, self.rewards_plh, self.next_states_plh, self.discount)
                 self.loss, self.train_op = capacities.tabular_learning_with_lr(
                     self.lr, self.Qs, self.inputs_plh, self.actions_t, self.targets_t
                 )
@@ -98,20 +98,13 @@ class TabularQAgent(TabularBasicAgent):
             self.all_summary_t = tf.summary.merge_all()
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+            self.event_count, self.inc_event_count_op = capacities.counter("event_count")
 
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
 
         return graph
-
-    def act(self, obs):
-        state_id = self.phi(obs)
-        act = self.sess.run(self.action_t, feed_dict={
-            self.inputs_plh: [ state_id ]
-        })
-
-        return act, state_id
 
     def learn_from_episode(self, env, render=False):
         score = 0
@@ -127,12 +120,20 @@ class TabularQAgent(TabularBasicAgent):
             next_obs, reward, done, info = env.step(act)
             next_state_id = self.phi(next_obs, done)
 
-            loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
-                self.inputs_plh: [ state_id ],
-                self.actions_t: [ act ],
-                self.rewards_plh: [ reward ],
-                self.next_states_plh: [ next_state_id ], 
+            memory = np.array([(state_id, act, reward, next_state_id)], dtype=self.replayMemoryDt)
+            if self.replayMemory.shape[0] >= self.er_rm_size:
+                self.replayMemory = np.delete(self.replayMemory, 0)
+            self.replayMemory = np.append(self.replayMemory, memory)
+
+            memories = np.random.choice(self.replayMemory, self.er_batch_size)
+            loss, _, event_count, _ = self.sess.run([self.loss, self.inc_event_count_op, self.event_count, self.train_op], feed_dict={
+                self.inputs_plh: memories['states'],
+                self.actions_t: memories['actions'],
+                self.rewards_plh: memories['rewards'],
+                self.next_states_plh: memories['next_states'],
             })
+            if event_count % self.update_every == 0:
+                self.sess.run(self.update_fixed_vars_op)
 
             av_loss.append(loss)
             score += reward
@@ -140,7 +141,7 @@ class TabularQAgent(TabularBasicAgent):
 
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,
-            self.loss_plh: np.mean(av_loss),
+            self.loss_plh: np.mean(av_loss)
         })
         self.sw.add_summary(summary, episode_id)
 

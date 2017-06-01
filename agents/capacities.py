@@ -182,7 +182,8 @@ def tabular_learning(Qs_t, states_t, actions_t, targets):
     global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
     inc_global_step = global_step.assign_add(1)
     with tf.control_dependencies([update_optimizer, inc_global_step]):
-        updates = (1 / tf.gather_nd(optimizer, state_action_pairs)) * err_estimates
+        epsilon = 1e-7
+        updates = (1 / ( epsilon + tf.gather_nd(optimizer, state_action_pairs)) ) * err_estimates
         train_op = tf.scatter_nd_add(Qs_t, state_action_pairs, updates)
 
     return loss, train_op
@@ -218,9 +219,11 @@ def fix_scope(from_scope):
         fixed = tf.get_variable(
             var.name.split("/")[-1].split(":")[0]
             , shape=var.get_shape()
+            , initializer=tf.constant_initializer(0.)
             , trainable=False
+            , dtype=var.dtype
         )
-        assign_op = tf.assign(fixed, var)
+        assign_op = fixed.assign(var)
         update_fixed_vars_op.append(assign_op)
 
     return update_fixed_vars_op

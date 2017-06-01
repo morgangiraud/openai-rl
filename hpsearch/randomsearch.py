@@ -25,11 +25,11 @@ def search(config):
     for i in range(nb_hp_params):
         all_fixed_params.append(copy.deepcopy(fixed_params))
 
-        config['max_iter'] = 5 if config['debug'] else int(150 * (1 + i/2))
+        config['max_iter'] = 5 if config['debug'] else int(200 * (1 + i/2))
         results = []
         futures = []
         with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), config['nb_process'])) as executor:
-            nb_config = 5 if config['debug'] else int(1000 / (1 + i/2))
+            nb_config = 5 if config['debug'] else int(500 / (1 + i/2))
             for j in range(nb_config): 
                 params = get_params(fixed_params)
                 config.update(params)

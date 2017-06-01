@@ -197,7 +197,7 @@ def tabular_learning_with_lr(init_lr, Qs_t, states_t, actions_t, targets):
     loss = tf.reduce_mean(err_estimates)
 
     global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
-    lr = tf.train.exponential_decay(init_lr, global_step, 50000, 0.5, staircase=True)
+    lr = tf.train.exponential_decay(tf.constant(init_lr, dtype=tf.float32), global_step, 50000, 0.5, staircase=True)
     if reusing_scope is False:
         tf.summary.scalar('lr', lr)
     inc_global_step = global_step.assign_add(1)

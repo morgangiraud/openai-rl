@@ -16,7 +16,7 @@ class TabularMCAgent(TabularBasicAgent):
     def get_best_config(self, env_name=""):
         return {
             'discount': 0.999 # ->1[ improve
-            , 'N0': 75 # -> ~ 75 improve
+            , 'N0': 25 # -> ~ 25 improve
             , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
         }

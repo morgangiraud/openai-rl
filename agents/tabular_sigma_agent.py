@@ -1,39 +1,39 @@
 import numpy as np
 import tensorflow as tf
 
-from agents import TabularMCAgent, capacities
- 
-class TabularTDLambdaAgent(TabularMCAgent):
-    """
-    Agent implementing tabular td(lambda) learning
-    """
+from agents import TabularBasicAgent, capacities
 
+class TabularSigmaAgent(TabularBasicAgent):
+    """
+    Agent implementing tabular Q-learning.
+    """
     def set_agent_props(self):
         self.lr = self.config['lr']
         self.discount = self.config['discount']
         self.N0 = self.config['N0']
         self.min_eps = self.config['min_eps']
         self.initial_q_value = self.config['initial_q_value']
-        self.lambda_value = self.config['lambda']
 
     def get_best_config(self, env_name=""):
-        return {
-            'lr': 1e-4
+        cartpolev0 = {
+            'lr': 2e-1
             , 'discount': 0.999 # ->1[ improve
-            , 'N0': 76 # -> ~ 75 improve
+            , 'N0': 500 # -> ~ 75 improve
             , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
-            , 'lambda': 0.9
         }
+        return {
+            'CartPole-v0': cartpolev0
+        }.get(env_name, cartpolev0)
+        
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
-        get_lambda = lambda: np.random.rand() 
 
         random_config = {
             'lr': get_lr()
@@ -41,19 +41,10 @@ class TabularTDLambdaAgent(TabularMCAgent):
             , 'N0': get_N0()
             , 'min_eps': get_min_eps()
             , 'initial_q_value': get_initial_q_value()
-            , 'lambda': get_lambda()
         }
         random_config.update(fixed_params)
 
         return random_config
-
-    def act(self, obs, done=False):
-        state_id = self.phi(obs, done)
-        act, estimate = self.sess.run([self.action_t, self.q_value_t], feed_dict={
-            self.inputs_plh: [ state_id ]
-        })
-
-        return act, state_id, estimate
 
     def build_graph(self, graph):
         with graph.as_default():
@@ -79,13 +70,31 @@ class TabularTDLambdaAgent(TabularMCAgent):
                 self.action_t = self.actions_t[0]
                 self.q_value_t = self.q_preds_t[0][self.action_t]
 
-            learning_scope = tf.VariableScope(reuse=False, name='TDLearning')
+            target_policy_scope = tf.VariableScope(reuse=False, name='TargetPolicy')
+            with tf.variable_scope(target_policy_scope):
+                max_state_action_idx = tf.stack([tf.range(self.nb_state), tf.cast(tf.argmax(self.Qs, 1), tf.int32)], 1)
+                self.target_policy = tf.sparse_to_dense(
+                    sparse_indices=max_state_action_idx
+                    , output_shape=[self.nb_state, self.action_space.n]
+                    , sparse_values=tf.constant([1-self.min_eps] * self.nb_state)
+                    , default_value=self.min_eps
+                )
+
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+
+            learning_scope = tf.VariableScope(reuse=False, name='QLearning')
             with tf.variable_scope(learning_scope):
                 self.rewards_plh = tf.placeholder(tf.float32, shape=[None], name="rewards_plh")
-                self.targets_plh = tf.placeholder(tf.float32, shape=[None], name="targets_plh")
+                self.next_states_plh = tf.placeholder(tf.int32, shape=[None], name="next_states_plh")
+                self.next_actions_plh = tf.placeholder(tf.int32, shape=[None], name="next_actions_plh")
 
+                sigma = tf.train.inverse_time_decay(tf.constant(1., dtype=tf.float32), self.episode_id, decay_steps=1, decay_rate=0.1)
+                tf.summary.scalar('sigma', sigma)
+                policy = self.target_policy # TODO: change that to be on-policy
+
+                self.targets_t = capacities.get_sigma_target(self.Qs, sigma, policy, self.rewards_plh, self.next_states_plh, self.next_actions_plh, self.discount)
                 self.loss, self.train_op = capacities.tabular_learning_with_lr(
-                    self.lr, self.Qs, self.inputs_plh, self.actions_t, self.targets_plh
+                    self.lr, self.Qs, self.inputs_plh, self.actions_t, self.targets_t
                 )
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
@@ -94,7 +103,7 @@ class TabularTDLambdaAgent(TabularMCAgent):
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+            
 
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
@@ -102,37 +111,46 @@ class TabularTDLambdaAgent(TabularMCAgent):
 
         return graph
 
+    def act(self, obs, done=False):
+        state_id = self.phi(obs, done)
+        act = self.sess.run(self.action_t, feed_dict={
+            self.inputs_plh: [ state_id ]
+        })
+
+        return act, state_id
+
     def learn_from_episode(self, env, render=False):
-        score = 0        
-        historyType = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32'), ('estimates', 'float32')])
-        history = np.array([], dtype=historyType)
+        score = 0
+        av_loss = []
         done = False
-        
+
         obs = env.reset()
-        act, state_id, estimate = self.act(obs)
+        act, state_id = self.act(obs, done)
         while not done:
             if render:
                 env.render()
-            
+
             next_obs, reward, done, info = env.step(act)
-            next_act, next_state_id, next_estimate = self.act(next_obs, done)
+            next_act, next_state_id = self.act(next_obs, done)
 
-            memory = np.array([(state_id, act, reward, next_estimate)], dtype=historyType)
-            history = np.append(history, memory)
+            loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
+                self.inputs_plh: [ state_id ],
+                self.actions_t: [ act ],
+                self.rewards_plh: [ reward ],
+                self.next_states_plh: [ next_state_id ], 
+                self.next_actions_plh: [ next_act ],
+            })
 
+            av_loss.append(loss)
             score += reward
-            act = next_act
+            obs = next_obs
             state_id = next_state_id
-
-        targets = capacities.get_lambda_expected_rewards(history['rewards'], history['estimates'], self.discount, self.lambda_value)
-        _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
-            self.inputs_plh: history['states'],
-            self.actions_t: history['actions'],
-            self.targets_plh: targets,
-        })
+            act = next_act
 
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,
-            self.loss_plh: loss
+            self.loss_plh: np.mean(av_loss),
         })
         self.sw.add_summary(summary, episode_id)
+
+        return

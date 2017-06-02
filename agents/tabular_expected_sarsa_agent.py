@@ -22,16 +22,8 @@ class TabularExpectedSarsaAgent(TabularBasicAgent):
             , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
         }
-        mountaincarv0 = {
-            'lr': 1
-            , 'discount': 0.999
-            , 'N0': 75
-            , 'min_eps': 0.001
-            , 'initial_q_value': 0
-        }
         return {
             'CartPole-v0': cartpolev0
-            , 'MountainCar-v0': mountaincarv0
         }.get(env_name, cartpolev0)
         
 
@@ -78,12 +70,22 @@ class TabularExpectedSarsaAgent(TabularBasicAgent):
                 self.action_t = self.actions_t[0]
                 self.q_value_t = self.q_preds_t[0][self.action_t]
 
+            target_policy_scope = tf.VariableScope(reuse=False, name='TargetPolicy')
+            with tf.variable_scope(target_policy_scope):
+                max_state_action_idx = tf.stack([tf.range(self.nb_state), tf.cast(tf.argmax(self.Qs, 1), tf.int32)], 1)
+                self.target_policy = tf.sparse_to_dense(
+                    sparse_indices=max_state_action_idx
+                    , output_shape=[self.nb_state, self.action_space.n]
+                    , sparse_values=tf.constant([1-self.min_eps] * self.nb_state)
+                    , default_value=self.min_eps
+                )
+
             learning_scope = tf.VariableScope(reuse=False, name='QLearning')
             with tf.variable_scope(learning_scope):
                 self.rewards_plh = tf.placeholder(tf.float32, shape=[None], name="rewards_plh")
                 self.next_states_plh = tf.placeholder(tf.int32, shape=[None], name="next_states_plh")
 
-                self.targets_t = capacities.get_expected_sarsa_target(self.Qs, self.rewards_plh, self.next_states_plh, self.discount)
+                self.targets_t = capacities.get_expected_sarsa_target(self.Qs, self.target_policy, self.rewards_plh, self.next_states_plh, self.discount)
                 self.loss, self.train_op = capacities.tabular_learning_with_lr(
                     self.lr, self.Qs, self.inputs_plh, self.actions_t, self.targets_t
                 )

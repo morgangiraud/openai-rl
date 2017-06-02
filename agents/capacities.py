@@ -166,9 +166,16 @@ def get_q_learning_target(Qs_t, rewards_t, next_states_t, discount):
     next_estimates = tf.gather_nd(Qs_t, state_action_pairs)
     return tf.stop_gradient(rewards_t + discount * next_estimates, name='q_learning_target')
 
-def get_expected_sarsa_target(Qs_t, rewards_t, next_states_t, discount):
+def get_expected_sarsa_target(Qs_t, target_policy_t, rewards_t, next_states_t, discount):
     next_qs = tf.gather(Qs_t, next_states_t)
-    next_estimates = tf.reduce_mean(next_qs, 1)
+    next_actions_probs = tf.gather(target_policy_t, next_states_t)
+    next_estimates = tf.reduce_sum(next_qs * next_actions_probs, 1)
+    return tf.stop_gradient(rewards_t + discount * next_estimates, name='expected_sarsa_target')
+
+def get_sigma_target(Qs_t, sigma, target_policy_t, rewards_t, next_states_t, next_actions_t, discount):
+    expected_sarsa_target = get_expected_sarsa_target(Qs_t, target_policy_t, rewards_t, next_states_t, discount)
+    td_target = get_td_target(Qs_t, rewards_t, next_states_t, next_actions_t, discount)
+    next_estimates = sigma * td_target + (1 - sigma) * expected_sarsa_target
     return tf.stop_gradient(rewards_t + discount * next_estimates, name='expected_sarsa_target')
 
 def tabular_learning(Qs_t, states_t, actions_t, targets):

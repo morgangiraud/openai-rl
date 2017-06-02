@@ -18,7 +18,7 @@ class TabularTD0Agent(TabularMCAgent):
     def get_best_config(self, env_name=""):
         return {
             'lr': 0.5 # ->.5] improve
-            , 'lr_decay_steps': 40000
+            , 'lr_decay_steps': 30000
             , 'discount': 0.999 # ->1[ improve
             , 'N0': 10 # ->10 improve
             , 'min_eps': 0.001 # ->0.001[ improve

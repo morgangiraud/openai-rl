@@ -19,13 +19,13 @@ class TabularTDNAgent(TabularMCAgent):
 
     def get_best_config(self, env_name=""):
         return {
-            'lr': 0.08140753227154848
-            , 'lr_decay_steps': 40000
-            , 'discount': 0.999 # ->1[ improve
-            , 'N0': 50 # -> ~ 50 improve
-            , 'min_eps': 0.001 # ->0.001[ improve
+            'lr': 0.08
+            , 'lr_decay_steps': 50000
+            , 'discount': 0.999
+            , 'N0': 10 
+            , 'min_eps': 0.001
             , 'initial_q_value': 0
-            , 'n_step': 43
+            , 'n_step': 40
         }
 
     @staticmethod
@@ -107,6 +107,7 @@ class TabularTDNAgent(TabularMCAgent):
     def learn_from_episode(self, env, render=False):
         t = 0
         score = 0
+        av_loss = []
         historyType = np.dtype([('states', 'int32', ()), ('actions', 'int32', ()), ('rewards', 'float32'), ('estimates', 'float32')])
         history = np.array([], dtype=historyType)
         done = False
@@ -130,11 +131,13 @@ class TabularTDNAgent(TabularMCAgent):
                     self.actions_t: [ history['actions'][- self.n_step - 1] ],
                     self.targets_t: [ targets[0] ],
                 })
+                av_loss.append(loss)
 
             t += 1
             score += reward
-            act = next_act
+            obs = next_obs
             state_id = next_state_id
+            act = next_act
 
         # We now have to finish the learning
         if self.n_step > 0:
@@ -145,10 +148,11 @@ class TabularTDNAgent(TabularMCAgent):
                 self.actions_t: history['actions'][-min_step:],
                 self.targets_t: targets,
             })
+            av_loss.append(loss)
 
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,
-            self.loss_plh: loss
+            self.loss_plh: np.mean(av_loss),
         })
         self.sw.add_summary(summary, episode_id)
  

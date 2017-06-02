@@ -19,7 +19,7 @@ def search(config):
     if config['debug']:
         print('*** Number of hyper-parameters: %d' % nb_hp_params)
 
-    config['max_iter'] = 5 if config['debug'] else 300
+    config['max_iter'] = 5 if config['debug'] else 500
     futures = []
     with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), config['nb_process'])) as executor:
         nb_config = 5 if config['debug'] else 200 * nb_hp_params

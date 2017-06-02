@@ -1,15 +1,16 @@
 import numpy as np
 import tensorflow as tf
 
-from agents import TabularMCAgent, capacities
+from agents import TabularBasicAgent, capacities
  
-class TabularTDLambdaAgent(TabularMCAgent):
+class TabularTDLambdaAgent(TabularBasicAgent):
     """
     Agent implementing tabular td(lambda) learning
     """
 
     def set_agent_props(self):
         self.lr = self.config['lr']
+        self.lr_decay_steps = self.config['lr_decay_steps']
         self.discount = self.config['discount']
         self.N0 = self.config['N0']
         self.min_eps = self.config['min_eps']
@@ -19,6 +20,7 @@ class TabularTDLambdaAgent(TabularMCAgent):
     def get_best_config(self, env_name=""):
         return {
             'lr': 1e-4
+            , 'lr_decay_steps': 40000
             , 'discount': 0.999 # ->1[ improve
             , 'N0': 76 # -> ~ 75 improve
             , 'min_eps': 0.001 # ->0.001[ improve
@@ -29,6 +31,7 @@ class TabularTDLambdaAgent(TabularMCAgent):
     @staticmethod
     def get_random_config(fixed_params={}):
         get_lr = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_lr_decay_steps = lambda: np.random.randint(1e3, 5e5)
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
@@ -37,6 +40,7 @@ class TabularTDLambdaAgent(TabularMCAgent):
 
         random_config = {
             'lr': get_lr()
+            , 'lr_decay_steps': get_lr_decay_steps()
             , 'discount': get_discount()
             , 'N0': get_N0()
             , 'min_eps': get_min_eps()
@@ -85,7 +89,7 @@ class TabularTDLambdaAgent(TabularMCAgent):
                 self.targets_plh = tf.placeholder(tf.float32, shape=[None], name="targets_plh")
 
                 self.loss, self.train_op = capacities.tabular_learning_with_lr(
-                    self.lr, self.Qs, self.inputs_plh, self.actions_t, self.targets_plh
+                    self.lr, self.lr_decay_steps, self.Qs, self.inputs_plh, self.actions_t, self.targets_plh
                 )
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])

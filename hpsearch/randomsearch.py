@@ -1,4 +1,4 @@
-import copy, os, sys, multiprocessing, time
+import copy, os, sys, multiprocessing, time, shutil
 import concurrent.futures
 import tensorflow as tf
 import numpy as np
@@ -52,6 +52,8 @@ def test_params(counter, config, params):
     # We train the agent
     agent.train(save_every=-1)
     mean_score, stddev_score = get_score_stat(config['result_dir'])
+    if os.path.exists(config['result_dir']):
+        shutil.rmtree(config['result_dir'])
 
     seconds = int( round( time.time() - start_time ))
     print("Run: {} | {}, mean_score {}".format(counter, time.ctime(), mean_score))

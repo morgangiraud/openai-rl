@@ -10,12 +10,12 @@ class TabularQLambdaBackwardAgent(TabularQAgent):
     def set_agent_props(self):
         super(TabularQLambdaBackwardAgent, self).set_agent_props()
 
-        self.lr = self.config['lr']
         self.lambda_value = self.config['lambda']
 
     def get_best_config(self, env_name=""):
         return {
             'lr': 0.0001
+            , 'lr_decay_steps': 40000
             , 'discount': 0.999
             , 'N0': 220
             , 'min_eps': 0.005
@@ -26,6 +26,7 @@ class TabularQLambdaBackwardAgent(TabularQAgent):
     @staticmethod
     def get_random_config(fixed_params={}):
         get_lr = lambda: 1e-4 + (.1 - 1e-4) * np.random.random(1)[0]
+        get_lr_decay_steps = lambda: np.random.randint(1e3, 5e5)
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
@@ -34,6 +35,7 @@ class TabularQLambdaBackwardAgent(TabularQAgent):
 
         random_config = {
             'lr': get_lr()
+            , 'lr_decay_steps': get_lr_decay_steps()
             , 'discount': get_discount()
             , 'N0': get_N0()
             , 'min_eps': get_min_eps()

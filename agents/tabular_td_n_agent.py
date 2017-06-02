@@ -10,6 +10,7 @@ class TabularTDNAgent(TabularMCAgent):
 
     def set_agent_props(self):
         self.lr = self.config['lr']
+        self.lr_decay_steps = self.config['lr_decay_steps']
         self.discount = self.config['discount']
         self.N0 = self.config['N0']
         self.min_eps = self.config['min_eps']
@@ -18,17 +19,19 @@ class TabularTDNAgent(TabularMCAgent):
 
     def get_best_config(self, env_name=""):
         return {
-            'lr': 2e-1
+            'lr': 0.08140753227154848
+            , 'lr_decay_steps': 40000
             , 'discount': 0.999 # ->1[ improve
-            , 'N0': 76 # -> ~ 75 improve
+            , 'N0': 50 # -> ~ 50 improve
             , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
-            , 'n_step': 10
+            , 'n_step': 43
         }
 
     @staticmethod
     def get_random_config(fixed_params={}):
         get_lr = lambda: 1e-3 + (1. - 1e-3) * np.random.random(1)[0]
+        get_lr_decay_steps = lambda: np.random.randint(1e3, 5e5)
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
@@ -37,6 +40,7 @@ class TabularTDNAgent(TabularMCAgent):
 
         random_config = {
             'lr': get_lr()
+            , 'lr_decay_steps': get_lr_decay_steps()
             , 'discount': get_discount()
             , 'N0': get_N0()
             , 'min_eps': get_min_eps()
@@ -83,7 +87,7 @@ class TabularTDNAgent(TabularMCAgent):
             with tf.variable_scope(learning_scope):
                 self.targets_t = tf.placeholder(tf.float32, shape=[None], name="targets_t")
                 self.loss, self.train_op = capacities.tabular_learning_with_lr(
-                    self.lr, self.Qs, self.inputs_plh, self.actions_t, self.targets_t
+                    self.lr, self.lr_decay_steps, self.Qs, self.inputs_plh, self.actions_t, self.targets_t
                 )
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])

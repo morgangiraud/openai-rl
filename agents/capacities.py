@@ -36,36 +36,42 @@ def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
 def batch_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
     reusing_scope = tf.get_variable_scope().reuse
 
-    N0_t = tf.constant(N0, tf.float32, name='N0')
-    min_eps_t = tf.constant(min_eps, tf.float32, name='min_eps')
+    nb_samples = tf.shape(q_preds_t)[0]
+    max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32)
 
     if nb_state == None:
         N = tf.Variable(1., trainable=False, dtype=tf.float32, name='N')
-        eps = tf.maximum(N0_t / (N0_t + N), min_eps_t, name="eps")
+        eps = tf.maximum(N0 / (N0 + N), min_eps, name="eps")
         update_N = tf.assign(N, N + 1)
         if reusing_scope is False:
             tf.summary.scalar('N', N)
+        probs_t = tf.ones_like(Qs_t) * eps / nb_actions
     else:
         N = tf.Variable(tf.ones(shape=[nb_state]), name='N', trainable=False)
         eps = tf.maximum(
-            N0_t / (N0_t + tf.gather(N, inputs_t))
-            , min_eps_t
+            N0 / (N0 + tf.gather(N, inputs_t))
+            , min_eps
             , name="eps"
         )
+        max_state_action_pairs = tf.stack([tf.range(nb_samples), max_actions], 1)
+        probs_t = tf.sparse_to_dense(
+            sparse_indices=max_state_action_pairs
+            , output_shape=[nb_samples, nb_actions]
+            , sparse_values=1 - eps
+            , default_value=0.
+        ) + tf.expand_dims(eps / nb_actions, 1)
+
         update_N = tf.scatter_add(N, inputs_t, tf.ones_like(inputs_t, dtype=tf.float32))
         if reusing_scope is False:
             tf.summary.histogram('N', N)
 
-    nb_samples = tf.shape(q_preds_t)[0]
-
     conditions = tf.greater(tf.random_uniform([nb_samples], 0, 1), eps)
-    max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32)
     random_actions = tf.random_uniform(shape=[nb_samples], minval=0, maxval=nb_actions, dtype=tf.int32)
 
     with tf.control_dependencies([update_N]): # Force the update call
         actions_t = tf.where(conditions, max_actions, random_actions)
 
-    return actions_t
+    return actions_t, probs_t
 
 def get_expected_rewards(episode_rewards, discount=.99):
     expected_reward = [0] * len(episode_rewards)
@@ -166,17 +172,20 @@ def get_q_learning_target(Qs_t, rewards_t, next_states_t, discount):
     next_estimates = tf.gather_nd(Qs_t, state_action_pairs)
     return tf.stop_gradient(rewards_t + discount * next_estimates, name='q_learning_target')
 
-def get_expected_sarsa_target(Qs_t, target_policy_t, rewards_t, next_states_t, discount):
+def get_expected_sarsa_target(Qs_t, rewards_t, next_states_t, next_probs_t, discount):
     next_qs = tf.gather(Qs_t, next_states_t)
-    next_actions_probs = tf.gather(target_policy_t, next_states_t)
-    next_estimates = tf.reduce_sum(next_qs * next_actions_probs, 1)
+    next_estimates = tf.reduce_sum(next_qs * next_probs_t, 1)
     return tf.stop_gradient(rewards_t + discount * next_estimates, name='expected_sarsa_target')
 
-def get_sigma_target(Qs_t, sigma, target_policy_t, rewards_t, next_states_t, next_actions_t, discount):
-    expected_sarsa_target = get_expected_sarsa_target(Qs_t, target_policy_t, rewards_t, next_states_t, discount)
-    td_target = get_td_target(Qs_t, rewards_t, next_states_t, next_actions_t, discount)
-    next_estimates = sigma * td_target + (1 - sigma) * expected_sarsa_target
-    return tf.stop_gradient(rewards_t + discount * next_estimates, name='expected_sarsa_target')
+def get_sigma_target(Qs_t, sigma, rewards_t, next_states_t, next_actions_t, next_probs_t, discount):
+    next_qs = tf.gather(Qs_t, next_states_t)
+    next_expected_sarsa_estimates = tf.reduce_sum(next_qs * next_probs_t, 1)
+
+    state_action_pairs = tf.stack([next_states_t, next_actions_t], 1)
+    next_td_estimates = tf.gather_nd(Qs_t, state_action_pairs)
+
+    next_estimates = sigma * next_td_estimates + (1 - sigma) * next_expected_sarsa_estimates
+    return tf.stop_gradient(rewards_t + discount * next_estimates, name='sigma_target')
 
 def tabular_learning(Qs_t, states_t, actions_t, targets):
     state_action_pairs = tf.stack([states_t, actions_t], 1)

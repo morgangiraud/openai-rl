@@ -1,27 +1,34 @@
 import numpy as np
 import tensorflow as tf
 
-from agents import TabularQAgent, capacities
+from agents import TabularSigmaAgent, capacities
 
-class TabularQLambdaBackwardAgent(TabularQAgent):
+class TabularSigmaLambdaBackwardAgent(TabularSigmaAgent):
     """
     Agent implementing Backward TD(lambda) tabular Q-learning.
     """
     def set_agent_props(self):
-        super(TabularQLambdaBackwardAgent, self).set_agent_props()
-
+        self.lr = self.config['lr']
+        self.lr_decay_steps = self.config['lr_decay_steps']
+        self.discount = self.config['discount']
+        self.N0 = self.config['N0']
+        self.min_eps = self.config['min_eps']
+        self.initial_q_value = self.config['initial_q_value']
         self.lambda_value = self.config['lambda']
 
     def get_best_config(self, env_name=""):
-        return {
-            'lr': 0.0001
-            , 'lr_decay_steps': 40000
+        cartpolev0 = {
+            'lr': 1e-3
+            , 'lr_decay_steps': 30000
             , 'discount': 0.999
-            , 'N0': 220
-            , 'min_eps': 0.005
+            , 'N0': 10
+            , 'min_eps': 0.001
             , 'initial_q_value': 0
-            , 'lambda': .99
+            , 'lambda': 0.99
         }
+        return {
+            'CartPole-v0': cartpolev0
+        }.get(env_name, cartpolev0)
 
     @staticmethod
     def get_random_config(fixed_params={}):
@@ -74,11 +81,19 @@ class TabularQLambdaBackwardAgent(TabularQAgent):
             with tf.variable_scope(et_scope):
                 et, update_et_op, self.reset_et_op = capacities.eligibility_traces(self.Qs, self.inputs_plh, self.actions_t, self.discount, self.lambda_value)
 
+            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+
             with tf.variable_scope('Training'):
                 self.rewards_plh = tf.placeholder(tf.float32, shape=[None], name="rewards_plh")
                 self.next_states_plh = tf.placeholder(tf.int32, shape=[None], name="next_states_plh")
+                self.next_actions_plh = tf.placeholder(tf.int32, shape=[None], name="next_actions_plh")
+                self.next_probs_plh = tf.placeholder(tf.float32, shape=[None, self.action_space.n], name="next_probs_plh")
 
-                self.targets_t = capacities.get_q_learning_target(self.Qs, self.rewards_plh, self.next_states_plh, self.discount)
+                sigma = tf.train.inverse_time_decay(tf.constant(1., dtype=tf.float32), self.episode_id, decay_steps=100, decay_rate=0.1)
+                tf.summary.scalar('sigma', sigma)
+
+                self.targets_t = capacities.get_sigma_target(self.Qs, sigma, self.rewards_plh, self.next_states_plh, self.next_actions_plh, self.next_probs_plh, self.discount)
+
                 global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
                 inc_global_step = global_step.assign_add(1)
                 with tf.control_dependencies([update_et_op, inc_global_step]):
@@ -91,8 +106,6 @@ class TabularQLambdaBackwardAgent(TabularQAgent):
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -102,4 +115,4 @@ class TabularQLambdaBackwardAgent(TabularQAgent):
     def learn_from_episode(self, env, render=False):
         self.sess.run(self.reset_et_op)
 
-        super(TabularQLambdaBackwardAgent, self).learn_from_episode(env, render)
+        super(TabularSigmaLambdaBackwardAgent, self).learn_from_episode(env, render)

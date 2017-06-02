@@ -9,6 +9,7 @@ from agents.tabular_q_er_agent import TabularQERAgent
 from agents.tabular_q_double_er_agent import TabularQDoubleERAgent
 from agents.tabular_expected_sarsa_agent import TabularExpectedSarsaAgent
 from agents.tabular_sigma_agent import TabularSigmaAgent
+from agents.tabular_sigma_lambda_backward_agent import TabularSigmaLambdaBackwardAgent
 from agents.deep_q_agent import DeepTDAgent, DeepFixedQOfflineERAgent, DQNAgent, DDQNAgent
 from agents.deep_policy_agent import DeepMCPolicyAgent, MCActorCriticAgent, ActorCriticAgent, A2CAgent, TDACAgent
 
@@ -24,6 +25,7 @@ __all__ = [
     "TabularQDoubleERAgent",
     "TabularExpectedSarsaAgent",
     "TabularSigmaAgent",
+    "TabularSigmaLambdaBackwardAgent",
     "DeepTDAgent",
     "DeepFixedQOfflineERAgent",
     "DQNAgent",

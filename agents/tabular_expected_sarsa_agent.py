@@ -17,11 +17,11 @@ class TabularExpectedSarsaAgent(TabularBasicAgent):
 
     def get_best_config(self, env_name=""):
         cartpolev0 = {
-            'lr': 2e-1
-            , 'lr_decay_steps': 40000
-            , 'discount': 0.999 # ->1[ improve
-            , 'N0': 500 # -> ~ 75 improve
-            , 'min_eps': 0.001 # ->0.001[ improve
+            'lr': .5
+            , 'lr_decay_steps': 30000
+            , 'discount': 0.999
+            , 'N0': 10
+            , 'min_eps': 0.001
             , 'initial_q_value': 0
         }
         return {
@@ -68,28 +68,19 @@ class TabularExpectedSarsaAgent(TabularBasicAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.actions_t = capacities.batch_eps_greedy(
+                self.actions_t, self.probs_t = capacities.batch_eps_greedy(
                     self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
                 self.action_t = self.actions_t[0]
                 self.q_value_t = self.q_preds_t[0][self.action_t]
 
-            target_policy_scope = tf.VariableScope(reuse=False, name='TargetPolicy')
-            with tf.variable_scope(target_policy_scope):
-                max_state_action_idx = tf.stack([tf.range(self.nb_state), tf.cast(tf.argmax(self.Qs, 1), tf.int32)], 1)
-                self.target_policy = tf.sparse_to_dense(
-                    sparse_indices=max_state_action_idx
-                    , output_shape=[self.nb_state, self.action_space.n]
-                    , sparse_values=tf.constant([1-self.min_eps] * self.nb_state)
-                    , default_value=self.min_eps
-                )
-
             learning_scope = tf.VariableScope(reuse=False, name='QLearning')
             with tf.variable_scope(learning_scope):
                 self.rewards_plh = tf.placeholder(tf.float32, shape=[None], name="rewards_plh")
                 self.next_states_plh = tf.placeholder(tf.int32, shape=[None], name="next_states_plh")
+                self.next_probs_plh = tf.placeholder(tf.float32, shape=[None, self.action_space.n], name="next_probs_plh")
 
-                self.targets_t = capacities.get_expected_sarsa_target(self.Qs, self.target_policy, self.rewards_plh, self.next_states_plh, self.discount)
+                self.targets_t = capacities.get_expected_sarsa_target(self.Qs, self.rewards_plh, self.next_states_plh, self.next_probs_plh, self.discount)
                 self.loss, self.train_op = capacities.tabular_learning_with_lr(
                     self.lr, self.lr_decay_steps, self.Qs, self.inputs_plh, self.actions_t, self.targets_t
                 )
@@ -108,13 +99,13 @@ class TabularExpectedSarsaAgent(TabularBasicAgent):
 
         return graph
 
-    def act(self, obs):
-        state_id = self.phi(obs)
-        act = self.sess.run(self.action_t, feed_dict={
+    def act(self, obs, done=False):
+        state_id = self.phi(obs, done)
+        act, probs = self.sess.run([self.action_t, self.probs_t], feed_dict={
             self.inputs_plh: [ state_id ]
         })
 
-        return act, state_id
+        return act, probs, state_id
 
     def learn_from_episode(self, env, render=False):
         score = 0
@@ -122,24 +113,28 @@ class TabularExpectedSarsaAgent(TabularBasicAgent):
         done = False
 
         obs = env.reset()
+        act, probs, state_id = self.act(obs, done)
         while not done:
             if render:
                 env.render()
 
-            act, state_id = self.act(obs)
             next_obs, reward, done, info = env.step(act)
-            next_state_id = self.phi(next_obs, done)
+            next_act, next_probs, next_state_id = self.act(next_obs, done)
 
             loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
                 self.inputs_plh: [ state_id ],
                 self.actions_t: [ act ],
                 self.rewards_plh: [ reward ],
-                self.next_states_plh: [ next_state_id ], 
+                self.next_states_plh: [ next_state_id ],
+                self.next_probs_plh: next_probs,
             })
 
             av_loss.append(loss)
             score += reward
             obs = next_obs
+            state_id = next_state_id
+            act = next_act
+            probs = next_probs
 
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,

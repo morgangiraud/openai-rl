@@ -68,7 +68,7 @@ class TabularQAgent(TabularBasicAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.actions_t = capacities.batch_eps_greedy(
+                self.actions_t, self.probs_t = capacities.batch_eps_greedy(
                     self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
                 self.action_t = self.actions_t[0]

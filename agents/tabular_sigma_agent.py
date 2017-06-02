@@ -17,11 +17,11 @@ class TabularSigmaAgent(TabularBasicAgent):
 
     def get_best_config(self, env_name=""):
         cartpolev0 = {
-            'lr': 2e-1
-            , 'lr_decay_steps': 40000
-            , 'discount': 0.999 # ->1[ improve
-            , 'N0': 500 # -> ~ 75 improve
-            , 'min_eps': 0.001 # ->0.001[ improve
+            'lr': .5
+            , 'lr_decay_steps': 30000
+            , 'discount': 0.999
+            , 'N0': 10
+            , 'min_eps': 0.001
             , 'initial_q_value': 0
         }
         return {
@@ -68,21 +68,11 @@ class TabularSigmaAgent(TabularBasicAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.actions_t = capacities.batch_eps_greedy(
+                self.actions_t, self.probs_t = capacities.batch_eps_greedy(
                     self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
                 self.action_t = self.actions_t[0]
                 self.q_value_t = self.q_preds_t[0][self.action_t]
-
-            target_policy_scope = tf.VariableScope(reuse=False, name='TargetPolicy')
-            with tf.variable_scope(target_policy_scope):
-                max_state_action_idx = tf.stack([tf.range(self.nb_state), tf.cast(tf.argmax(self.Qs, 1), tf.int32)], 1)
-                self.target_policy = tf.sparse_to_dense(
-                    sparse_indices=max_state_action_idx
-                    , output_shape=[self.nb_state, self.action_space.n]
-                    , sparse_values=tf.constant([1-self.min_eps] * self.nb_state)
-                    , default_value=self.min_eps
-                )
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
@@ -91,12 +81,12 @@ class TabularSigmaAgent(TabularBasicAgent):
                 self.rewards_plh = tf.placeholder(tf.float32, shape=[None], name="rewards_plh")
                 self.next_states_plh = tf.placeholder(tf.int32, shape=[None], name="next_states_plh")
                 self.next_actions_plh = tf.placeholder(tf.int32, shape=[None], name="next_actions_plh")
+                self.next_probs_plh = tf.placeholder(tf.float32, shape=[None, self.action_space.n], name="next_probs_plh")
 
-                sigma = tf.train.inverse_time_decay(tf.constant(1., dtype=tf.float32), self.episode_id, decay_steps=1, decay_rate=0.1)
+                sigma = tf.train.inverse_time_decay(tf.constant(1., dtype=tf.float32), self.episode_id, decay_steps=100, decay_rate=0.1)
                 tf.summary.scalar('sigma', sigma)
-                policy = self.target_policy # TODO: change that to be on-policy
 
-                self.targets_t = capacities.get_sigma_target(self.Qs, sigma, policy, self.rewards_plh, self.next_states_plh, self.next_actions_plh, self.discount)
+                self.targets_t = capacities.get_sigma_target(self.Qs, sigma, self.rewards_plh, self.next_states_plh, self.next_actions_plh, self.next_probs_plh, self.discount)
                 self.loss, self.train_op = capacities.tabular_learning_with_lr(
                     self.lr, self.lr_decay_steps, self.Qs, self.inputs_plh, self.actions_t, self.targets_t
                 )
@@ -107,8 +97,6 @@ class TabularSigmaAgent(TabularBasicAgent):
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
 
-            
-
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
             self.pscore_sum_t = tf.summary.scalar('play_score', self.pscore_plh)
@@ -117,11 +105,11 @@ class TabularSigmaAgent(TabularBasicAgent):
 
     def act(self, obs, done=False):
         state_id = self.phi(obs, done)
-        act = self.sess.run(self.action_t, feed_dict={
+        act, probs = self.sess.run([self.action_t, self.probs_t], feed_dict={
             self.inputs_plh: [ state_id ]
         })
 
-        return act, state_id
+        return act, probs, state_id
 
     def learn_from_episode(self, env, render=False):
         score = 0
@@ -129,13 +117,13 @@ class TabularSigmaAgent(TabularBasicAgent):
         done = False
 
         obs = env.reset()
-        act, state_id = self.act(obs, done)
+        act, probs, state_id = self.act(obs, done)
         while not done:
             if render:
                 env.render()
 
             next_obs, reward, done, info = env.step(act)
-            next_act, next_state_id = self.act(next_obs, done)
+            next_act, next_probs, next_state_id = self.act(next_obs, done)
 
             loss, _ = self.sess.run([self.loss, self.train_op], feed_dict={
                 self.inputs_plh: [ state_id ],
@@ -143,6 +131,7 @@ class TabularSigmaAgent(TabularBasicAgent):
                 self.rewards_plh: [ reward ],
                 self.next_states_plh: [ next_state_id ], 
                 self.next_actions_plh: [ next_act ],
+                self.next_probs_plh: next_probs,
             })
 
             av_loss.append(loss)
@@ -150,6 +139,7 @@ class TabularSigmaAgent(TabularBasicAgent):
             obs = next_obs
             state_id = next_state_id
             act = next_act
+            probs = next_probs
 
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,

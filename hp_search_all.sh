@@ -1,11 +1,13 @@
 agentList="
+  TabularMCAgent
+  TabularTD0Agent
+  TabularTDNAgent
+  TabularTDLambdaAgent
   TabularQAgent
-  BackwardTabularQAgent
+  TabularQLambdaBackwardAgent
   TabularQERAgent
-  TabularFixedQERAgent
-  TabularQOfflineERAgent
-  TabularFixedQOfflineERAgent
-  BackwardTabularFixedQOfflineERAgent
+  TabularQDoubleERAgent
+  TabularExpectedSarsaAgent
 
   DeepTDAgent
   DQNAgent

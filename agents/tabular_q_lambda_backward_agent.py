@@ -8,19 +8,23 @@ class TabularQLambdaBackwardAgent(TabularQAgent):
     Agent implementing Backward TD(lambda) tabular Q-learning.
     """
     def set_agent_props(self):
-        super(TabularQLambdaBackwardAgent, self).set_agent_props()
-
+        self.lr = self.config['lr']
+        self.lr_decay_steps = self.config['lr_decay_steps']
+        self.discount = self.config['discount']
+        self.N0 = self.config['N0']
+        self.min_eps = self.config['min_eps']
+        self.initial_q_value = self.config['initial_q_value']
         self.lambda_value = self.config['lambda']
 
     def get_best_config(self, env_name=""):
         return {
-            'lr': 0.0001
-            , 'lr_decay_steps': 40000
+            'lr': 0.4
+            , 'lr_decay_steps': 10000
             , 'discount': 0.999
-            , 'N0': 220
-            , 'min_eps': 0.005
+            , 'N0': 10
+            , 'min_eps': 0.001
             , 'initial_q_value': 0
-            , 'lambda': .99
+            , 'lambda': .9
         }
 
     @staticmethod
@@ -79,11 +83,18 @@ class TabularQLambdaBackwardAgent(TabularQAgent):
                 self.next_states_plh = tf.placeholder(tf.int32, shape=[None], name="next_states_plh")
 
                 self.targets_t = capacities.get_q_learning_target(self.Qs, self.rewards_plh, self.next_states_plh, self.discount)
+                target = self.targets_t[0]
+                state_action_pairs = tf.stack([self.inputs_plh, self.actions_t], 1)
+                estimate = tf.gather_nd(self.Qs, state_action_pairs)[0]
+                err_estimate = target - estimate
+
                 global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                lr = tf.train.exponential_decay(tf.constant(self.lr, dtype=tf.float32), global_step, self.lr_decay_steps, 0.5, staircase=True)
+                tf.summary.scalar('lr', lr)
                 inc_global_step = global_step.assign_add(1)
                 with tf.control_dependencies([update_et_op, inc_global_step]):
-                    self.loss = tf.reduce_sum(self.targets_t[0] * et)
-                    self.train_op = tf.assign_add(self.Qs, self.lr * self.targets_t[0] * et)
+                    self.loss = tf.reduce_sum(err_estimate * et)
+                    self.train_op = tf.assign_add(self.Qs, lr * err_estimate * et)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)

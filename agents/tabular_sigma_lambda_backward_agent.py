@@ -18,13 +18,13 @@ class TabularSigmaLambdaBackwardAgent(TabularSigmaAgent):
 
     def get_best_config(self, env_name=""):
         cartpolev0 = {
-            'lr': 1e-3
+            'lr': 0.1
             , 'lr_decay_steps': 30000
             , 'discount': 0.999
             , 'N0': 10
             , 'min_eps': 0.001
             , 'initial_q_value': 0
-            , 'lambda': 0.99
+            , 'lambda': 0.9
         }
         return {
             'CartPole-v0': cartpolev0
@@ -93,12 +93,18 @@ class TabularSigmaLambdaBackwardAgent(TabularSigmaAgent):
                 tf.summary.scalar('sigma', sigma)
 
                 self.targets_t = capacities.get_sigma_target(self.Qs, sigma, self.rewards_plh, self.next_states_plh, self.next_actions_plh, self.next_probs_plh, self.discount)
+                target = self.targets_t[0]
+                state_action_pairs = tf.stack([self.inputs_plh, self.actions_t], 1)
+                estimate = tf.gather_nd(self.Qs, state_action_pairs)[0]
+                err_estimate = target - estimate
 
                 global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+                lr = tf.train.exponential_decay(tf.constant(self.lr, dtype=tf.float32), global_step, self.lr_decay_steps, 0.5, staircase=True)
+                tf.summary.scalar('lr', lr)
                 inc_global_step = global_step.assign_add(1)
                 with tf.control_dependencies([update_et_op, inc_global_step]):
-                    self.loss = tf.reduce_sum(self.targets_t[0] * et)
-                    self.train_op = tf.assign_add(self.Qs, self.lr * self.targets_t[0] * et)
+                    self.loss = tf.reduce_sum(err_estimate * et)
+                    self.train_op = tf.assign_add(self.Qs, lr * err_estimate * et)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
             self.score_sum_t = tf.summary.scalar('score', self.score_plh)

@@ -31,7 +31,7 @@ class TabularQERAgent(TabularQAgent):
     @staticmethod
     def get_random_config(fixed_params={}):
         get_lr = lambda: 1e-3 + (1 - 1e-3) * np.random.random(1)[0]
-        get_lr_decay_steps = lambda: np.random.randint(1e3, 5e5)
+        get_lr_decay_steps = lambda: np.random.randint(1e3, 1e5)
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]

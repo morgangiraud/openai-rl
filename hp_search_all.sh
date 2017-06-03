@@ -8,12 +8,13 @@ agentList="
   TabularQERAgent
   TabularQDoubleERAgent
   TabularExpectedSarsaAgent
+  TabularSigmaAgent
+  TabularSigmaLambdaBackwardAgent
 
   DeepTDAgent
   DQNAgent
   DDQNAgent
-  DeepFixedQOfflineERAgent
-
+  
   DeepMCPolicyAgent
   MCActorCriticAgent
   ActorCriticAgent

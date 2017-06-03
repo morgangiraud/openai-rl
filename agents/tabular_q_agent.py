@@ -17,11 +17,11 @@ class TabularQAgent(TabularBasicAgent):
 
     def get_best_config(self, env_name=""):
         cartpolev0 = {
-            'lr': 2e-1
-            , 'lr_decay_steps': 40000
-            , 'discount': 0.999 # ->1[ improve
-            , 'N0': 500 # -> ~ 75 improve
-            , 'min_eps': 0.001 # ->0.001[ improve
+            'lr': 0.3180045122383971
+            , 'lr_decay_steps': 50000
+            , 'discount': 0.999
+            , 'N0': 11
+            , 'min_eps': 0.001
             , 'initial_q_value': 0
         }
         return {
@@ -32,7 +32,7 @@ class TabularQAgent(TabularBasicAgent):
     @staticmethod
     def get_random_config(fixed_params={}):
         get_lr = lambda: 1e-2 + (1 - 1e-2) * np.random.random(1)[0]
-        get_lr_decay_steps = lambda: np.random.randint(1e3, 5e5)
+        get_lr_decay_steps = lambda: np.random.randint(1e3, 1e5)
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 5e3)
         get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]

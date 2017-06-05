@@ -17,17 +17,27 @@ class TabularSigmaLambdaBackwardAgent(TabularSigmaAgent):
         self.lambda_value = self.config['lambda']
 
     def get_best_config(self, env_name=""):
-        cartpolev0 = {
-            'lr': 0.1
+        cartpolev0 =  {
+            'lr': 0.4
             , 'lr_decay_steps': 30000
             , 'discount': 0.999
             , 'N0': 10
             , 'min_eps': 0.001
             , 'initial_q_value': 0
-            , 'lambda': 0.9
+            , 'lambda': .8
+        }
+        mountaincarv0 =  {
+            'lr': 0.4
+            , 'lr_decay_steps': 30000
+            , 'discount': 0.999
+            , 'N0': 10
+            , 'min_eps': 0.001
+            , 'initial_q_value': 0
+            , 'lambda': .8
         }
         return {
             'CartPole-v0': cartpolev0
+            , 'MountainCar-v0': mountaincarv0
         }.get(env_name, cartpolev0)
 
     @staticmethod

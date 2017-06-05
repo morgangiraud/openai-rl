@@ -147,22 +147,32 @@ def run_params(nb_epochs, params, main_config):
     if os.path.exists(config['result_dir']):
         shutil.rmtree(config['result_dir'])
 
-    # We create the agent
-    env = gym.make(config['env_name'])
-    agent = make_agent(config, env)
-    
-    # We train the agent
-    agent.train(save_every=-1)
-    agent.save()
-    mean_score, stddev_score = get_score_stat(config['result_dir'])
+    try:
+        # We create the agent
+        env = gym.make(config['env_name'])
+        agent = make_agent(config, env)
+        
+        # We train the agent
+        agent.train(save_every=-1)
+        agent.save()
+        mean_score, stddev_score = get_score_stat(config['result_dir'])
+        result = {
+            'loss': -mean_score
+            , 'mean_score': mean_score
+            , 'stddev_score': stddev_score
+        }
+    except:
+        result = {
+            'loss': 0
+            , 'mean_score': 0
+            , 'stddev_score': 0
+            , 'error': str(sys.exc_info()[0])
+            , 'error_message': str(sys.exc_info()[1])
+        }
 
     # If we are training for less than 9 epochs, we remove the folder
-    if nb_epochs < 9:
+    if nb_epochs < 9 and os.path.exists(config['result_dir']):
         shutil.rmtree(config['result_dir'])
 
-    return {
-        'loss': -mean_score
-        , 'mean_score': mean_score
-        , 'stddev_score': stddev_score
-    }
+    return result
 

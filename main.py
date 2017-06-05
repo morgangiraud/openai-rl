@@ -33,7 +33,7 @@ flags.DEFINE_float('lr', 1e-3, 'Learning rate')
 flags.DEFINE_integer('lr_decay_steps', 50000, 'Learning rate decay steps for tabular methods')
 flags.DEFINE_integer('nb_units', 20, 'Number of hidden units in Deep learning agents')
 flags.DEFINE_float('q_scale_lr', 1., 'For actor critic agents, scale variables between q loss and policy loss')
-flags.DEFINE_integer('n_step', 0, 'Number of step used in TD(n) algorithm')
+flags.DEFINE_integer('n_step', 4, 'Number of step used in TD(n) algorithm')
 
 # Policy
 flags.DEFINE_integer('N0', 100, 'Offset used in the decay algorithm of epsilon')

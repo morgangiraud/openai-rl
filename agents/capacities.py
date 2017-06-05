@@ -148,6 +148,26 @@ def eligibility_traces(Qs_t, states_t, actions_t, discount, lambda_value):
 
     return (et, update_et_op, reset_et_op)
 
+def eligibility_dutch_traces(Qs_t, states_t, actions_t, lr, discount, lambda_value):
+    # Beware this trace has to be used with a different learning rule
+    et = tf.Variable(
+        initial_value=tf.zeros_like(Qs_t)
+        , name="EligibilityTraces"
+        , dtype=tf.float32
+        , trainable=False
+    )
+    tf.summary.histogram('ETarray', et)
+    state_action_pairs = tf.stack([states_t, actions_t], 1)
+    current_trace = tf.gather_nd(et, state_action_pairs)
+    updates = 1 - lr * discount * lambda_value * current_trace
+    with tf.control_dependencies([updates]):
+        dec_et_op = tf.assign(et, discount * lambda_value * et)
+        with tf.control_dependencies([dec_et_op]):
+            update_et_op = tf.scatter_nd_add(et, indices=state_action_pairs, updates=updates)
+
+    reset_et_op = et.assign(tf.zeros_like(et))
+
+    return (et, update_et_op, reset_et_op)
 
 def get_mc_target(rewards_t, discount):
     discounts = discount ** tf.cast(tf.range(tf.shape(rewards_t)[0]), dtype=tf.float32)

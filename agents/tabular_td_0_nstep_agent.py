@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from agents import TabularMCAgent, capacities
 
-class TabularTDNAgent(TabularMCAgent):
+class TabularNStepTD0Agent(TabularMCAgent):
     """
     Agent implementing tabular TD(n) learning
     """
@@ -16,13 +16,15 @@ class TabularTDNAgent(TabularMCAgent):
         self.min_eps = self.config['min_eps']
         self.initial_q_value = self.config['initial_q_value']
         self.n_step = self.config['n_step']
+        if self.n_step < 1:
+            raise Exception('n_step var must be strictly greater than 0')
 
     def get_best_config(self, env_name=""):
         return {
             'lr': 0.08
             , 'lr_decay_steps': 50000
             , 'discount': 0.999
-            , 'N0': 10 
+            , 'N0': 10
             , 'min_eps': 0.001
             , 'initial_q_value': 0
             , 'n_step': 40
@@ -64,7 +66,7 @@ class TabularTDNAgent(TabularMCAgent):
             tf.set_random_seed(self.random_seed)
 
             self.inputs_plh = tf.placeholder(tf.int32, shape=[None], name="inputs_plh")
-            
+
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
                 self.Qs = tf.get_variable('Qs'
@@ -81,7 +83,7 @@ class TabularTDNAgent(TabularMCAgent):
                     self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
                 self.action_t = self.actions_t[0]
-                self.q_value_t = self.q_preds_t[0][self.action_t]
+                self.q_value_t = self.q_preds_t[0, self.action_t]
 
             learning_scope = tf.VariableScope(reuse=False, name='TDLearning')
             with tf.variable_scope(learning_scope):
@@ -123,12 +125,12 @@ class TabularTDNAgent(TabularMCAgent):
 
             memory = np.array([(state_id, act, reward, next_estimate)], dtype=historyType)
             history = np.append(history, memory)
-            if t >= self.n_step:
+            if t >= self.n_step - 1:
                 # In this case, it is a lot faster to use Python directly to compute the targets
-                targets = capacities.get_n_step_expected_rewards(history['rewards'][- self.n_step - 1:], history['estimates'][- self.n_step - 1:], self.discount, self.n_step)
+                targets = capacities.get_n_step_expected_rewards(history['rewards'][- self.n_step:], history['estimates'][- self.n_step:], self.discount, self.n_step)
                 _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
-                    self.inputs_plh: [ history['states'][- self.n_step - 1] ],
-                    self.actions_t: [ history['actions'][- self.n_step - 1] ],
+                    self.inputs_plh: [ history['states'][- self.n_step] ],
+                    self.actions_t: [ history['actions'][- self.n_step] ],
                     self.targets_t: [ targets[0] ],
                 })
                 av_loss.append(loss)
@@ -140,7 +142,7 @@ class TabularTDNAgent(TabularMCAgent):
             act = next_act
 
         # We now have to finish the learning
-        if self.n_step > 0:
+        if self.n_step - 1 > 0:
             min_step = min(self.n_step, len(history))
             targets = capacities.get_expected_rewards(history['rewards'][- min_step:], self.discount)
             _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
@@ -155,4 +157,3 @@ class TabularTDNAgent(TabularMCAgent):
             self.loss_plh: np.mean(av_loss),
         })
         self.sw.add_summary(summary, episode_id)
- 

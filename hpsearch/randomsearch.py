@@ -45,22 +45,33 @@ def test_params(counter, config, params):
 
     config['result_dir'] = config['result_dir_prefix'] + '/run-' + str(counter).zfill(3)
 
-    # We create the agent
-    env = gym.make(config['env_name'])
-    agent = make_agent(config, env)
+    try:
+        # We create the agent
+        env = gym.make(config['env_name'])
+        agent = make_agent(config, env)
 
-    # We train the agent
-    agent.train(save_every=-1)
-    mean_score, stddev_score = get_score_stat(config['result_dir'])
+        # We train the agent
+        agent.train(save_every=-1)
+        mean_score, stddev_score = get_score_stat(config['result_dir'])
+        result = {
+            'params': params
+            , 'mean_score': mean_score
+            , 'stddev_score': stddev_score
+        }
+
+        seconds = int( round( time.time() - start_time ))
+        print("Run: {} | {}, mean_score {}".format(counter, time.ctime(), mean_score))
+        print("%d seconds." % seconds )
+    except:
+        result = {
+            'params': params
+            , 'mean_score': 0
+            , 'stddev_score': 0
+            , 'error': str(sys.exc_info()[0])
+            , 'error_message': str(sys.exc_info()[1])
+        }
+        
     if os.path.exists(config['result_dir']):
         shutil.rmtree(config['result_dir'])
 
-    seconds = int( round( time.time() - start_time ))
-    print("Run: {} | {}, mean_score {}".format(counter, time.ctime(), mean_score))
-    print("%d seconds." % seconds )
-
-    return {
-        'params': params
-        , 'mean_score': mean_score
-        , 'stddev_score': stddev_score
-    }    
+    return result

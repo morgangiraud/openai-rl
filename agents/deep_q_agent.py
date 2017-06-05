@@ -16,7 +16,7 @@ class DeepTDAgent(BasicAgent):
             , 'initial_stddev': self.config['initial_stddev']
         }
 
-        self.lr = config['lr']
+        self.lr = self.config['lr']
         self.discount = config['discount']
         self.N0 = self.config['N0']
         self.min_eps = self.config['min_eps']

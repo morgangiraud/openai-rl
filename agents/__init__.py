@@ -1,7 +1,7 @@
 from agents.basic_agent import BasicAgent, TabularBasicAgent
 from agents.tabular_mc_agent import TabularMCAgent
 from agents.tabular_td_0_agent import TabularTD0Agent
-from agents.tabular_td_n_agent import TabularTDNAgent
+from agents.tabular_td_0_nstep_agent import TabularNStepTD0Agent
 from agents.tabular_td_lambda_agent import TabularTDLambdaAgent
 from agents.tabular_q_agent import TabularQAgent
 from agents.tabular_q_lambda_backward_agent import TabularQLambdaBackwardAgent
@@ -19,7 +19,7 @@ __all__ = [
     "BasicAgent",
     "TabularMCAgent",
     "TabularTD0Agent",
-    "TabularTDNAgent",
+    "TabularNStepTD0Agent",
     "TabularTDLambdaAgent",
     "TabularQAgent",
     "TabularQLambdaBackwardAgent",

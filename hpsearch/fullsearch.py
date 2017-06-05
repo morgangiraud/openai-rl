@@ -1,4 +1,4 @@
-import copy, os, sys, multiprocessing, time
+import copy, os, sys, multiprocessing, time, shutil
 import concurrent.futures
 import tensorflow as tf
 import numpy as np
@@ -17,23 +17,36 @@ def exec_first_pass(counter, config, params):
 
     config['result_dir'] = config['result_dir_prefix'] + '/run-' + str(counter).zfill(3)
 
-    # We create the agent
-    env = gym.make(config['env_name'])
-    agent = make_agent(config, env)
+    try:
+        # We create the agent
+        env = gym.make(config['env_name'])
+        agent = make_agent(config, env)
 
-    # We train the agent
-    agent.train(save_every=-1)
-    mean_score, stddev_score = get_score_stat(config['result_dir'])
+        # We train the agent
+        agent.train(save_every=-1)
+        mean_score, stddev_score = get_score_stat(config['result_dir'])
+        result = {
+            'params': params
+            , 'mean_score': mean_score
+            , 'stddev_score': stddev_score
+        }
 
-    seconds = int( round( time.time() - start_time ))
-    print("Run: {} | {}, mean_score {}".format(counter, time.ctime(), mean_score))
-    print("%d seconds." % seconds )
+        seconds = int( round( time.time() - start_time ))
+        print("Run: {} | {}, mean_score {}".format(counter, time.ctime(), mean_score))
+        print("%d seconds." % seconds )
+    except:
+        result = {
+            'params': params
+            , 'mean_score': 0
+            , 'stddev_score': 0
+            , 'error': str(sys.exc_info()[0])
+            , 'error_message': str(sys.exc_info()[1])
+        }
+    
+    if os.path.exists(config['result_dir']):
+        shutil.rmtree(config['result_dir'])
 
-    return {
-        'params': params
-        , 'mean_score': mean_score
-        , 'stddev_score': stddev_score
-    }
+    return result
 
 def first_pass(config):
     config = copy.deepcopy(config)
@@ -73,23 +86,33 @@ def exec_second_pass(config):
 
     config['result_dir'] = config['result_dir_prefix'] + '/lr-' + str(config['lr'])
 
-    # We create the agent
-    env = gym.make(config['env_name'])
-    agent = make_agent(config, env)
+    try:
+        # We create the agent
+        env = gym.make(config['env_name'])
+        agent = make_agent(config, env)
 
-    # We train the agent
-    agent.train(save_every=-1)
-    mean_score, stddev_score = get_score_stat(config['result_dir'])
+        # We train the agent
+        agent.train(save_every=-1)
+        mean_score, stddev_score = get_score_stat(config['result_dir'])
+        result = {
+            'lr': config['lr']
+            , 'mean_score': mean_score
+            , 'stddev_score': stddev_score
+        }
 
-    seconds = int( round( time.time() - start_time ))
-    print("Run with lr: {} | {}".format(config['lr'], time.ctime()))
-    print("%d seconds." % seconds )
+        seconds = int( round( time.time() - start_time ))
+        print("Run with lr: {} | {}".format(config['lr'], time.ctime()))
+        print("%d seconds." % seconds )
+    except:
+        result = {
+            'lr': config['lr']
+            , 'mean_score': 0
+            , 'stddev_score': 0
+            , 'error': str(sys.exc_info()[0])
+            , 'error_message': str(sys.exc_info()[1])
+        }
 
-    return {
-        'lr': config['lr']
-        , 'mean_score': mean_score
-        , 'stddev_score': stddev_score
-    }
+    return result
 
 def second_pass(config, best_agent_config):
     config = copy.deepcopy(config)

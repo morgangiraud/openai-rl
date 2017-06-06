@@ -24,8 +24,8 @@ class TabularMCAgent(TabularBasicAgent):
     @staticmethod
     def get_random_config(fixed_params={}):
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
-        get_N0 = lambda: np.random.randint(1, 5e3)
-        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_N0 = lambda: np.random.randint(1, 1e3)
+        get_min_eps = lambda: 1e-4 + (2e-1 - 1e-4) * np.random.random(1)[0]
         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
 
         random_config = {

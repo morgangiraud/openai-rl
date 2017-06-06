@@ -73,67 +73,9 @@ def batch_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None
 
     return actions_t, probs_t
 
-def get_expected_rewards(episode_rewards, discount=.99):
-    expected_reward = [0] * len(episode_rewards)
-    for t in range(len(episode_rewards) - 1, -1, -1):
-        if t == len(episode_rewards) - 1:
-            expected_reward[t] = episode_rewards[t]
-        else:
-            expected_reward[t] = discount * expected_reward[t + 1] + episode_rewards[t]
-
-    return expected_reward
-
-def tf_get_n_step_expected_rewards(episode_rewards_t, estimates_t, discount, n_step):
-    ep_r_shape_0 = tf.shape(episode_rewards_t)[0]
-    i = tf.matmul(
-        tf.expand_dims(tf.cast(tf.range(ep_r_shape_0), dtype=tf.float32), 1), 
-        tf.ones((1, ep_r_shape_0))
-    )
-    j = tf.transpose(i)
-    reward_coefs = (discount**(i-j)) * tf.cast(i >= j, tf.float32) * tf.cast(i - j <= n_step, tf.float32)
-    permut_matrix = discount**(n_step + 1) * tf.cast(i > j + n_step, tf.float32) * tf.cast(i <= j + n_step + 1, tf.float32)
-    all_n_step_expected_rewards = tf.squeeze(tf.matmul(tf.expand_dims(episode_rewards_t, 0), reward_coefs)) + tf.matmul(tf.expand_dims(estimates_t, 0), permut_matrix)
-
-    return all_n_step_expected_rewards
-
-def get_n_step_expected_rewards(episode_rewards, estimates, discount=.99, n_step=0):
-    expected_reward = [0] * len(episode_rewards)
-    for t in range(len(episode_rewards)):
-        if t + n_step <= len(episode_rewards) - 1:
-            expected_reward[t] = estimates[t + n_step]
-            for t_2 in range(t+n_step, t - 1, -1):
-                expected_reward[t] = episode_rewards[t_2] + discount * expected_reward[t]
-        else:
-            for t_2 in range(len(episode_rewards) - 1, t - 1, -1):
-                expected_reward[t] = episode_rewards[t_2] + discount * expected_reward[t]
-
-    return expected_reward
-
-def get_n_step_expected_rewards_mat(episode_rewards, estimates, discount=.99, n_step=0):
-    expected_reward = [0] * len(episode_rewards)
-    rewards_coef = np.fromfunction(lambda i,j: discount**(i-j) * (i >= j) * (i - j <= n_step), (len(episode_rewards), len(episode_rewards)))
-    permut = np.fromfunction(lambda i,j: (i > j + n_step) * (i <= j + n_step + 1), (len(episode_rewards), len(episode_rewards)))
-
-    return np.dot(episode_rewards, rewards_coef) + discount**(n_step+1) * np.dot(estimates, permut)
-
-def get_lambda_expected_rewards(episode_rewards, estimates, discount=.99, lambda_value=.9):
-    if lambda_value == 1.: # In this case this leads to MC 
-        return get_expected_rewards(episode_rewards, discount)
-
-    expected_reward = np.array([0.] * len(episode_rewards))
-    for i in range(len(episode_rewards)):
-        rewards = np.concatenate( (episode_rewards[:len(episode_rewards)-i], np.zeros(i)) )
-        n_step_returns = np.array(get_n_step_expected_rewards(rewards, estimates, discount, i))
-        if i == len(episode_rewards) - 1:
-            expected_reward += lambda_value**i * n_step_returns
-        else:
-            expected_reward += (1-lambda_value) * lambda_value**i * n_step_returns
-
-    return expected_reward
-
 def eligibility_traces(Qs_t, states_t, actions_t, discount, lambda_value):
     et = tf.Variable(
-        initial_value=tf.zeros_like(Qs_t)
+        initial_value=tf.zeros_like(Qs_t, dtype=tf.float32)
         , name="EligibilityTraces"
         , dtype=tf.float32
         , trainable=False
@@ -168,6 +110,63 @@ def eligibility_dutch_traces(Qs_t, states_t, actions_t, lr, discount, lambda_val
     reset_et_op = et.assign(tf.zeros_like(et))
 
     return (et, update_et_op, reset_et_op)
+
+def get_expected_rewards(episode_rewards, discount=.99):
+    expected_reward = [0] * len(episode_rewards)
+    for t in range(len(episode_rewards) - 1, -1, -1):
+        if t == len(episode_rewards) - 1:
+            expected_reward[t] = episode_rewards[t]
+        else:
+            expected_reward[t] = discount * expected_reward[t + 1] + episode_rewards[t]
+
+    return expected_reward
+
+def tf_get_n_step_expected_rewards(episode_rewards_t, estimates_t, discount, n_step):
+    ep_r_shape_0 = tf.shape(episode_rewards_t)[0]
+    i = tf.matmul(
+        tf.expand_dims(tf.cast(tf.range(ep_r_shape_0), dtype=tf.float32), 1), 
+        tf.ones((1, ep_r_shape_0))
+    )
+    j = tf.transpose(i)
+    reward_coefs = (discount**(i-j)) * tf.cast(i >= j, tf.float32) * tf.cast(i - j <= n_step, tf.float32)
+    permut_matrix = discount**(n_step + 1) * tf.cast(i > j + n_step, tf.float32) * tf.cast(i <= j + n_step + 1, tf.float32)
+    all_n_step_expected_rewards = tf.squeeze(tf.matmul(tf.expand_dims(episode_rewards_t, 0), reward_coefs)) + tf.matmul(tf.expand_dims(estimates_t, 0), permut_matrix)
+
+    return all_n_step_expected_rewards
+
+def get_n_step_expected_rewards(episode_rewards, estimates, discount=.99, n_step=1):
+    expected_reward = [0] * len(episode_rewards)
+    for t in range(len(episode_rewards)):
+        if t + n_step <= len(episode_rewards):
+            expected_reward[t] = estimates[t + n_step - 1]
+            for t_2 in range(t + n_step - 1, t - 1, -1):
+                expected_reward[t] = episode_rewards[t_2] + discount * expected_reward[t]
+        else:
+            for t_2 in range(len(episode_rewards) - 1, t - 1, -1):
+                expected_reward[t] = episode_rewards[t_2] + discount * expected_reward[t]
+
+    return expected_reward
+
+def get_n_step_expected_rewards_mat(episode_rewards, estimates, discount=.99, n_step=1):
+    expected_reward = [0] * len(episode_rewards)
+    rewards_coef = np.fromfunction(lambda i,j: discount**(i-j) * (i >= j) * (i - j < n_step), (len(episode_rewards), len(episode_rewards)))
+    permut = np.fromfunction(lambda i,j: (i > j + n_step) * (i <= j + n_step), (len(episode_rewards), len(episode_rewards)))
+
+    return np.dot(episode_rewards, rewards_coef) + discount**(n_step) * np.dot(estimates, permut)
+
+def get_lambda_expected_rewards(episode_rewards, estimates, discount=.99, lambda_value=.9):
+    if lambda_value == 1.: # In this case this leads to MC 
+        return get_expected_rewards(episode_rewards, discount)
+
+    expected_reward = np.array([0.] * len(episode_rewards))
+    for i in range(1, len(episode_rewards) + 1):
+        n_step_returns = np.array(get_n_step_expected_rewards(episode_rewards, estimates, discount, i))
+        if i == len(episode_rewards):
+            expected_reward += lambda_value**(i-1) * np.array(get_expected_rewards(episode_rewards, discount))
+        else:
+            expected_reward += (1-lambda_value) * lambda_value**(i-1) * n_step_returns
+
+    return expected_reward
 
 def get_mc_target(rewards_t, discount):
     discounts = discount ** tf.cast(tf.range(tf.shape(rewards_t)[0]), dtype=tf.float32)

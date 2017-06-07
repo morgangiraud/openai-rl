@@ -14,12 +14,22 @@ class TabularMCAgent(TabularBasicAgent):
         self.initial_q_value = self.config['initial_q_value']
 
     def get_best_config(self, env_name=""):
-        return {
+        cartpolev0 = {
             'discount': 0.999 # ->1[ improve
             , 'N0': 25 # -> ~ 25 improve
             , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
         }
+        acrobotv1 = {
+            "discount": 0.9954190807222132,
+            "initial_q_value": -500,
+            "N0": 100,
+            "min_eps": 0.11409578938939571
+          }
+        return {
+            'CartPole-v0': cartpolev0
+            , 'Acrobot-v1': acrobotv1
+        }.get(env_name, cartpolev0)
 
     @staticmethod
     def get_random_config(fixed_params={}):
@@ -56,7 +66,7 @@ class TabularMCAgent(TabularBasicAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.actions_t, self.probs_t = capacities.batch_eps_greedy(
+                self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
                     self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
                 self.action_t = self.actions_t[0]

@@ -20,7 +20,7 @@ class TabularTDLambdaAgent(TabularBasicAgent):
     def get_best_config(self, env_name=""):
         return {
             'lr': 0.048446545517096054
-            , 'lr_decay_steps': 40000
+            , 'lr_decay_steps': 30000
             , 'discount': 0.999
             , 'N0': 132 
             , 'min_eps': 0.001
@@ -30,11 +30,11 @@ class TabularTDLambdaAgent(TabularBasicAgent):
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_lr = lambda: 1e-4 + (2e-1 - 1e-4) * np.random.random(1)[0]
         get_lr_decay_steps = lambda: np.random.randint(1e3, 1e5)
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
-        get_N0 = lambda: np.random.randint(1, 5e3)
-        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_N0 = lambda: np.random.randint(1, 1e3)
+        get_min_eps = lambda: 1e-4 + (2e-1 - 1e-4) * np.random.random(1)[0]
         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
         get_lambda = lambda: np.random.rand() 
 
@@ -77,7 +77,7 @@ class TabularTDLambdaAgent(TabularBasicAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.actions_t, self.probs_t = capacities.batch_eps_greedy(
+                self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
                     self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
                 self.action_t = self.actions_t[0]

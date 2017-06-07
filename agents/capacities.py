@@ -33,11 +33,12 @@ def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
 
     return action_t
 
-def batch_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
+def tabular_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
     reusing_scope = tf.get_variable_scope().reuse
 
     nb_samples = tf.shape(q_preds_t)[0]
     max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32)
+    max_state_action_pairs = tf.stack([tf.range(nb_samples), max_actions], 1)
 
     if nb_state == None:
         N = tf.Variable(1., trainable=False, dtype=tf.float32, name='N')
@@ -45,31 +46,50 @@ def batch_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None
         update_N = tf.assign(N, N + 1)
         if reusing_scope is False:
             tf.summary.scalar('N', N)
-        probs_t = tf.ones_like(Qs_t) * eps / nb_actions
     else:
-        N = tf.Variable(tf.ones(shape=[nb_state]), name='N', trainable=False)
+        N = tf.Variable(tf.zeros(shape=[nb_state]), dtype=tf.float32, name='N', trainable=False)
         eps = tf.maximum(
             N0 / (N0 + tf.gather(N, inputs_t))
             , min_eps
             , name="eps"
         )
-        max_state_action_pairs = tf.stack([tf.range(nb_samples), max_actions], 1)
-        probs_t = tf.sparse_to_dense(
-            sparse_indices=max_state_action_pairs
-            , output_shape=[nb_samples, nb_actions]
-            , sparse_values=1 - eps
-            , default_value=0.
-        ) + tf.expand_dims(eps / nb_actions, 1)
-
         update_N = tf.scatter_add(N, inputs_t, tf.ones_like(inputs_t, dtype=tf.float32))
         if reusing_scope is False:
             tf.summary.histogram('N', N)
+        
+    probs_t = tf.sparse_to_dense(
+        sparse_indices=max_state_action_pairs
+        , output_shape=[nb_samples, nb_actions]
+        , sparse_values=1 - eps
+        , default_value=0.
+    ) + tf.expand_dims(eps / nb_actions, 1)
 
     conditions = tf.greater(tf.random_uniform([nb_samples], 0, 1), eps)
     random_actions = tf.random_uniform(shape=[nb_samples], minval=0, maxval=nb_actions, dtype=tf.int32)
 
     with tf.control_dependencies([update_N]): # Force the update call
         actions_t = tf.where(conditions, max_actions, random_actions)
+
+    return actions_t, probs_t
+
+def tabular_UCB(Qs_t, inputs_t, timestep, nb_actions):
+    reusing_scope = tf.get_variable_scope().reuse
+
+    Ns_t = tf.Variable(tf.zeros_like(Qs_t), dtype=tf.float32, name="N", trainable=False)
+    if reusing_scope is False:
+        tf.summary.histogram('N', Ns_t)
+
+    qs_t = tf.gather(Qs_t, inputs_t)
+    ns_t = tf.gather(Ns_t, inputs_t)
+
+    values_t = qs_t + ( (2 * tf.log(tf.cast(timestep, tf.float32))) / ns_t )**(1/2)
+    actions_t = tf.cast(tf.argmax(values_t, 1), dtype=tf.int32)
+
+    nb_samples = tf.shape(inputs_t)[0]
+    state_action_pairs = tf.stack([tf.range(nb_samples), actions_t], 1)
+    update_N = tf.scatter_nd_add(Ns_t, state_action_pairs, tf.ones_like(inputs_t, dtype=tf.float32))
+    with tf.control_dependencies([update_N]):
+        probs_t = tf.one_hot(actions_t, depth=nb_actions)
 
     return actions_t, probs_t
 
@@ -86,14 +106,14 @@ def eligibility_traces(Qs_t, states_t, actions_t, discount, lambda_value):
         state_action_pairs = tf.stack([states_t, actions_t], 1)
         update_et_op = tf.scatter_nd_update(et, indices=state_action_pairs, updates=tf.ones_like(states_t, dtype=tf.float32))
 
-    reset_et_op = et.assign(tf.zeros_like(et))
+    reset_et_op = et.assign(tf.zeros_like(et, dtype=tf.float32))
 
     return (et, update_et_op, reset_et_op)
 
 def eligibility_dutch_traces(Qs_t, states_t, actions_t, lr, discount, lambda_value):
     # Beware this trace has to be used with a different learning rule
     et = tf.Variable(
-        initial_value=tf.zeros_like(Qs_t)
+        initial_value=tf.zeros_like(Qs_t, dtype=tf.float32)
         , name="EligibilityTraces"
         , dtype=tf.float32
         , trainable=False
@@ -107,7 +127,7 @@ def eligibility_dutch_traces(Qs_t, states_t, actions_t, lr, discount, lambda_val
         with tf.control_dependencies([dec_et_op]):
             update_et_op = tf.scatter_nd_add(et, indices=state_action_pairs, updates=updates)
 
-    reset_et_op = et.assign(tf.zeros_like(et))
+    reset_et_op = et.assign(tf.zeros_like(et, dtype=tf.float32))
 
     return (et, update_et_op, reset_et_op)
 
@@ -212,7 +232,7 @@ def tabular_learning(Qs_t, states_t, actions_t, targets):
     err_estimates = targets - estimates
     loss = tf.reduce_mean(err_estimates)
 
-    optimizer = tf.Variable(tf.zeros_like(Qs_t), name='optimizer', trainable=False)
+    optimizer = tf.Variable(tf.zeros_like(Qs_t, dtype=tf.float32), name='optimizer', trainable=False)
     update_optimizer = tf.scatter_nd_add(optimizer, state_action_pairs, tf.ones_like(states_t, dtype=tf.float32))
     global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
     inc_global_step = global_step.assign_add(1)

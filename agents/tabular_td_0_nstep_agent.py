@@ -32,11 +32,11 @@ class TabularNStepTD0Agent(TabularMCAgent):
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_lr = lambda: 1e-3 + (1. - 1e-3) * np.random.random(1)[0]
+        get_lr = lambda: 1e-3 + (.9 - 1e-3) * np.random.random(1)[0]
         get_lr_decay_steps = lambda: np.random.randint(1e3, 1e5)
         get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
-        get_N0 = lambda: np.random.randint(1, 5e3)
-        get_min_eps = lambda: 1e-4 + (1e-1 - 1e-4) * np.random.random(1)[0]
+        get_N0 = lambda: np.random.randint(1, 1e3)
+        get_min_eps = lambda: 1e-4 + (2e-1 - 1e-4) * np.random.random(1)[0]
         get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
         get_n_step = lambda: np.random.randint(0, 200) # actually n is between [0, +inf[ but exploring infinity is too huge bro
 
@@ -79,7 +79,7 @@ class TabularNStepTD0Agent(TabularMCAgent):
 
             policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
             with tf.variable_scope(policy_scope):
-                self.actions_t, self.probs_t = capacities.batch_eps_greedy(
+                self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
                     self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
                 self.action_t = self.actions_t[0]

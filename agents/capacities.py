@@ -38,7 +38,6 @@ def tabular_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=No
 
     nb_samples = tf.shape(q_preds_t)[0]
     max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32)
-    max_state_action_pairs = tf.stack([tf.range(nb_samples), max_actions], 1)
 
     if nb_state == None:
         N = tf.Variable(1., trainable=False, dtype=tf.float32, name='N')
@@ -58,7 +57,7 @@ def tabular_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=No
             tf.summary.histogram('N', N)
         
     probs_t = tf.sparse_to_dense(
-        sparse_indices=max_state_action_pairs
+        sparse_indices=tf.stack([tf.range(nb_samples), max_actions], 1)
         , output_shape=[nb_samples, nb_actions]
         , sparse_values=1 - eps
         , default_value=0.
@@ -72,30 +71,35 @@ def tabular_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=No
 
     return actions_t, probs_t
 
-def tabular_UCB(Qs_t, inputs_t, timestep, nb_actions):
+def tabular_UCB(Qs_t, inputs_t):
     reusing_scope = tf.get_variable_scope().reuse
 
-    Ns_t = tf.Variable(tf.zeros_like(Qs_t), dtype=tf.float32, name="N", trainable=False)
+    timestep = tf.Variable(0, dtype=tf.int32, trainable=False, name="timestep")
+    inc_t = tf.assign_add(timestep, 1)
+
+    Ns_t = tf.Variable(tf.ones(tf.shape(Qs_t)), dtype=tf.float32, name="N", trainable=False)
     if reusing_scope is False:
         tf.summary.histogram('N', Ns_t)
 
-    qs_t = tf.gather(Qs_t, inputs_t)
-    ns_t = tf.gather(Ns_t, inputs_t)
+    with tf.control_dependencies([inc_t]):
+        qs_t = tf.gather(Qs_t, inputs_t)
+        ns_t = tf.gather(Ns_t, inputs_t)
 
     values_t = qs_t + ( (2 * tf.log(tf.cast(timestep, tf.float32))) / ns_t )**(1/2)
     actions_t = tf.cast(tf.argmax(values_t, 1), dtype=tf.int32)
+    probs_t = tf.one_hot(actions_t, depth=tf.shape(Qs_t)[1])
 
-    nb_samples = tf.shape(inputs_t)[0]
-    state_action_pairs = tf.stack([tf.range(nb_samples), actions_t], 1)
+    state_action_pairs = tf.stack([inputs_t, actions_t], 1)
     update_N = tf.scatter_nd_add(Ns_t, state_action_pairs, tf.ones_like(inputs_t, dtype=tf.float32))
-    with tf.control_dependencies([update_N]):
-        probs_t = tf.one_hot(actions_t, depth=nb_actions)
+
+    with tf.control_dependencies([update_N]): # Force the update call
+        actions_t = tf.identity(actions_t)
 
     return actions_t, probs_t
 
 def eligibility_traces(Qs_t, states_t, actions_t, discount, lambda_value):
     et = tf.Variable(
-        initial_value=tf.zeros_like(Qs_t, dtype=tf.float32)
+        initial_value=tf.zeros(Qs_t.get_shape())
         , name="EligibilityTraces"
         , dtype=tf.float32
         , trainable=False

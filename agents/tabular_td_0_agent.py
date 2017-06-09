@@ -16,7 +16,7 @@ class TabularTD0Agent(TabularMCAgent):
         self.initial_q_value = self.config['initial_q_value']
 
     def get_best_config(self, env_name=""):
-        return {
+        cartpolev0 = {
             'lr': 0.5 # ->.5] improve
             , 'lr_decay_steps': 30000
             , 'discount': 0.999 # ->1[ improve
@@ -24,15 +24,34 @@ class TabularTD0Agent(TabularMCAgent):
             , 'min_eps': 0.001 # ->0.001[ improve
             , 'initial_q_value': 0
         }
+        mountaincarv0 = {
+            "min_eps": 0.001,
+            "N0": 100,
+            "lr": 0.1,
+            "initial_q_value": 0,
+            "discount": 1.,
+            "lr_decay_steps": 100000
+        }
+        acrobotv1 = {
+            "discount": 0.999
+            , "initial_q_value": 0
+            , "N0": 100
+            , "min_eps": 0.11409578938939571
+          }
+        return {
+            'CartPole-v0': cartpolev0
+            , 'MountainCar-v0': mountaincarv0
+            , 'Acrobot-v1': acrobotv1
+        }.get(env_name, cartpolev0)
 
     @staticmethod
     def get_random_config(fixed_params={}):
         get_lr = lambda: 1e-2 + (.9 - 1e-2) * np.random.random(1)[0]
         get_lr_decay_steps = lambda: np.random.randint(1e3, 1e5)
-        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_discount = lambda: 0.98 + (1 - 0.98) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 1e3)
         get_min_eps = lambda: 1e-4 + (2e-1 - 1e-4) * np.random.random(1)[0]
-        get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
+        get_initial_q_value = lambda: 0
 
         random_config = {
             'lr': get_lr()
@@ -67,8 +86,9 @@ class TabularTD0Agent(TabularMCAgent):
                 self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
                     self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
                 )
-                self.action_t = self.actions_t[0]
-                self.q_value_t = self.q_preds_t[0][self.action_t]
+                # self.actions_t, self.probs_t = capacities.tabular_UCB(self.Qs, self.inputs_plh)    
+                # self.action_t = self.actions_t[0]
+                # self.q_value_t = self.q_preds_t[0][self.action_t]
 
             learning_scope = tf.VariableScope(reuse=False, name='TDLearning')
             with tf.variable_scope(learning_scope):

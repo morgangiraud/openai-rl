@@ -15,28 +15,35 @@ class TabularMCAgent(TabularBasicAgent):
 
     def get_best_config(self, env_name=""):
         cartpolev0 = {
-            'discount': 0.999 # ->1[ improve
-            , 'N0': 25 # -> ~ 25 improve
-            , 'min_eps': 0.001 # ->0.001[ improve
+            'discount': .99
+            , 'N0': 10
+            , 'min_eps': 0.001
             , 'initial_q_value': 0
         }
+        mountaincarv0 = {
+            'discount': 0.99
+            , 'N0': 10
+            , 'min_eps': 0.001
+            , 'initial_q_value': 0 # This is an optimistic initialization
+        }
         acrobotv1 = {
-            "discount": 0.9954190807222132,
-            "initial_q_value": -500,
-            "N0": 100,
-            "min_eps": 0.11409578938939571
+            "discount": 0.999
+            , "initial_q_value": 0 # This is an optimistic initialization
+            , "N0": 100
+            , "min_eps": 0.11409578938939571
           }
         return {
             'CartPole-v0': cartpolev0
+            , 'MountainCar-v0': mountaincarv0
             , 'Acrobot-v1': acrobotv1
         }.get(env_name, cartpolev0)
 
     @staticmethod
     def get_random_config(fixed_params={}):
-        get_discount = lambda: 0.5 + (1 - 0.5) * np.random.random(1)[0]
+        get_discount = lambda: 0.98 + (1 - 0.98) * np.random.random(1)[0]
         get_N0 = lambda: np.random.randint(1, 1e3)
         get_min_eps = lambda: 1e-4 + (2e-1 - 1e-4) * np.random.random(1)[0]
-        get_initial_q_value = lambda: 0 # int(np.random.random(1)[0] * 200)
+        get_initial_q_value = lambda: 0
 
         random_config = {
             'discount': get_discount()
@@ -105,8 +112,8 @@ class TabularMCAgent(TabularBasicAgent):
 
     def learn_from_episode(self, env, render=False):
         score = 0
-        historyType = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32')])
-        history = np.array([], dtype=historyType)
+        episodeType = np.dtype([('states', 'int32'), ('actions', 'int32'), ('rewards', 'float32')])
+        episode = np.array([], dtype=episodeType)
         done = False
 
         obs = env.reset()
@@ -114,18 +121,18 @@ class TabularMCAgent(TabularBasicAgent):
             if render:
                 env.render()
 
-            act, state_id = self.act(obs)
+            act, state_id= self.act(obs)
             obs, reward, done, info = env.step(act)
 
-            memory = np.array([(state_id, act, reward)], dtype=historyType)
-            history = np.append(history, memory)
+            memory = np.array([(state_id, act, reward)], dtype=episodeType)
+            episode = np.append(episode, memory)
 
             score += reward
 
         _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
-            self.inputs_plh: history['states'],
-            self.actions_t: history['actions'],
-            self.rewards_plh: history['rewards'],
+            self.inputs_plh: episode['states'],
+            self.actions_t: episode['actions'],
+            self.rewards_plh: episode['rewards'],
         })
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,

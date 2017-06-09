@@ -43,30 +43,23 @@ class TestCapacities(unittest.TestCase):
         with tf.Graph().as_default():
             tf.set_random_seed(1)
 
-            inputs = tf.random_uniform(shape=[1], minval=0, maxval=3, dtype=tf.int32)
-            inputs = tf.Print(inputs, data=[inputs], message='inputs')
+            inputs_t = tf.random_uniform(shape=[1], minval=0, maxval=3, dtype=tf.int32)
+            # inputs_t = tf.Print(inputs_t, data=[inputs_t], message='inputs_t')
 
             Qs = tf.ones([nb_states, nb_actions], dtype=tf.float32)
-            Qs = tf.Print(Qs, data=[Qs], message='Qs', summarize=12)
+            # Qs = tf.Print(Qs, data=[Qs], message='Qs', summarize=12)
 
-            timestep = tf.Variable(0, dtype=tf.int32, trainable=False, name="timestep")
-            inc_t = tf.assign_add(timestep, 1)
-
-            with tf.control_dependencies([inc_t]):
-                actions, probs = capacities.tabular_UCB(Qs, inputs, timestep, nb_actions)
-            actions = tf.Print(actions, data=[timestep, actions], message='actions')
+            actions_t, probs = capacities.tabular_UCB(Qs, inputs_t)
+            # actions_t = tf.Print(actions_t, data=[timestep, actions_t], message='actions_t')
  
             with tf.Session() as sess:
-                print(tf.global_variables())
                 sess.run(tf.global_variables_initializer())
-                sess.run(tf.local_variables_initializer())
-                print('biboup')
 
-                inputs, actions = sess.run([inputs, actions])
-                inputs, actions = sess.run([inputs, actions])
-                inputs, actions = sess.run([inputs, actions])
-                self.assertEqual(np.array_equal(inputs, [ 2, 1 ]), True)
-                self.assertEqual(np.array_equal(actions, [ 0,  1 ]), True)
+                inputs, actions = sess.run([inputs_t, actions_t])
+                inputs, actions = sess.run([inputs_t, actions_t])
+                inputs, actions = sess.run([inputs_t, actions_t])
+                self.assertEqual(np.array_equal(inputs, [ 0 ]), True)
+                self.assertEqual(np.array_equal(actions, [ 0 ]), True)
 
     def test_policy(self):
         policy_params = {

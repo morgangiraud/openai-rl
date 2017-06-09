@@ -33,28 +33,21 @@ def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
 
     return action_t
 
-def tabular_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
+def tabular_eps_greedy(inputs_t, q_preds_t, nb_states, nb_actions, N0, min_eps):
     reusing_scope = tf.get_variable_scope().reuse
 
     nb_samples = tf.shape(q_preds_t)[0]
     max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32)
 
-    if nb_state == None:
-        N = tf.Variable(1., trainable=False, dtype=tf.float32, name='N')
-        eps = tf.maximum(N0 / (N0 + N), min_eps, name="eps")
-        update_N = tf.assign(N, N + 1)
-        if reusing_scope is False:
-            tf.summary.scalar('N', N)
-    else:
-        N = tf.Variable(tf.zeros(shape=[nb_state]), dtype=tf.float32, name='N', trainable=False)
-        eps = tf.maximum(
-            N0 / (N0 + tf.gather(N, inputs_t))
-            , min_eps
-            , name="eps"
-        )
-        update_N = tf.scatter_add(N, inputs_t, tf.ones_like(inputs_t, dtype=tf.float32))
-        if reusing_scope is False:
-            tf.summary.histogram('N', N)
+    Ns = tf.get_variable('Ns', shape=[nb_states], dtype=tf.float32, trainable=False, initializer=tf.zeros_initializer())
+    eps = tf.maximum(
+        N0 / (N0 + tf.gather(Ns, inputs_t))
+        , min_eps
+        , name="eps"
+    )
+    update_Ns = tf.scatter_add(Ns, inputs_t, tf.ones_like(inputs_t, dtype=tf.float32))
+    if reusing_scope is False:
+        tf.summary.histogram('Ns', Ns)
         
     probs_t = tf.sparse_to_dense(
         sparse_indices=tf.stack([tf.range(nb_samples), max_actions], 1)
@@ -66,7 +59,7 @@ def tabular_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=No
     conditions = tf.greater(tf.random_uniform([nb_samples], 0, 1), eps)
     random_actions = tf.random_uniform(shape=[nb_samples], minval=0, maxval=nb_actions, dtype=tf.int32)
 
-    with tf.control_dependencies([update_N]): # Force the update call
+    with tf.control_dependencies([update_Ns]): # Force the update call
         actions_t = tf.where(conditions, max_actions, random_actions)
 
     return actions_t, probs_t
@@ -74,37 +67,39 @@ def tabular_eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=No
 def tabular_UCB(Qs_t, inputs_t):
     reusing_scope = tf.get_variable_scope().reuse
 
-    timestep = tf.Variable(0, dtype=tf.int32, trainable=False, name="timestep")
+    timestep = tf.get_variable("timestep", shape=[], dtype=tf.int32, trainable=False, initializer=tf.zeros_initializer())
     inc_t = tf.assign_add(timestep, 1)
 
-    Ns_t = tf.Variable(tf.ones(tf.shape(Qs_t)), dtype=tf.float32, name="N", trainable=False)
+    # State Action count
+    Nsa_t = tf.get_variable("Nsa", shape=Qs_t.get_shape(), dtype=tf.float32, trainable=False, initializer=tf.ones_initializer())
     if reusing_scope is False:
-        tf.summary.histogram('N', Ns_t)
+        tf.summary.histogram('Nsa', Nsa_t)
 
     with tf.control_dependencies([inc_t]):
         qs_t = tf.gather(Qs_t, inputs_t)
-        ns_t = tf.gather(Ns_t, inputs_t)
+        nsa_t = tf.gather(Nsa_t, inputs_t)
 
-    values_t = qs_t + ( (2 * tf.log(tf.cast(timestep, tf.float32))) / ns_t )**(1/2)
+    values_t = qs_t + ( (2 * tf.log(tf.cast(timestep, tf.float32))) / nsa_t )**(1/2)
     actions_t = tf.cast(tf.argmax(values_t, 1), dtype=tf.int32)
     probs_t = tf.one_hot(actions_t, depth=tf.shape(Qs_t)[1])
 
     state_action_pairs = tf.stack([inputs_t, actions_t], 1)
-    update_N = tf.scatter_nd_add(Ns_t, state_action_pairs, tf.ones_like(inputs_t, dtype=tf.float32))
+    update_Nsa = tf.scatter_nd_add(Nsa_t, state_action_pairs, tf.ones_like(inputs_t, dtype=tf.float32))
 
-    with tf.control_dependencies([update_N]): # Force the update call
+    with tf.control_dependencies([update_Nsa]): # Force the update call
         actions_t = tf.identity(actions_t)
 
     return actions_t, probs_t
 
 def eligibility_traces(Qs_t, states_t, actions_t, discount, lambda_value):
-    et = tf.Variable(
-        initial_value=tf.zeros(Qs_t.get_shape())
-        , name="EligibilityTraces"
+    et = tf.get_variable(
+        "eligibilitytraces"
+        , shape=Qs_t.get_shape()
         , dtype=tf.float32
         , trainable=False
+        , initializer=tf.zeros_initializer()
     )
-    tf.summary.histogram('ETarray', et)
+    tf.summary.histogram('eligibilitytraces', et)
     dec_et_op = tf.assign(et, discount * lambda_value * et)
     with tf.control_dependencies([dec_et_op]):
         state_action_pairs = tf.stack([states_t, actions_t], 1)
@@ -116,13 +111,14 @@ def eligibility_traces(Qs_t, states_t, actions_t, discount, lambda_value):
 
 def eligibility_dutch_traces(Qs_t, states_t, actions_t, lr, discount, lambda_value):
     # Beware this trace has to be used with a different learning rule
-    et = tf.Variable(
-        initial_value=tf.zeros_like(Qs_t, dtype=tf.float32)
-        , name="EligibilityTraces"
+    et = tf.get_variable(
+        "eligibilitytraces"
+        , shape=Qs_t.get_shape()
         , dtype=tf.float32
         , trainable=False
+        , initializer=tf.zeros_initializer()
     )
-    tf.summary.histogram('ETarray', et)
+    tf.summary.histogram('eligibilitytraces', et)
     state_action_pairs = tf.stack([states_t, actions_t], 1)
     current_trace = tf.gather_nd(et, state_action_pairs)
     updates = 1 - lr * discount * lambda_value * current_trace
@@ -231,18 +227,30 @@ def get_sigma_target(Qs_t, sigma, rewards_t, next_states_t, next_actions_t, next
     return tf.stop_gradient(rewards_t + discount * next_estimates, name='sigma_target')
 
 def tabular_learning(Qs_t, states_t, actions_t, targets):
+    reusing_scope = tf.get_variable_scope().reuse
+
     state_action_pairs = tf.stack([states_t, actions_t], 1)
     estimates = tf.gather_nd(Qs_t, state_action_pairs)
     err_estimates = targets - estimates
     loss = tf.reduce_mean(err_estimates)
 
-    optimizer = tf.Variable(tf.zeros_like(Qs_t, dtype=tf.float32), name='optimizer', trainable=False)
-    update_optimizer = tf.scatter_nd_add(optimizer, state_action_pairs, tf.ones_like(states_t, dtype=tf.float32))
+    Nsa = tf.get_variable(
+        "Nsa"
+        , shape=Qs_t.get_shape()
+        , dtype=tf.float32
+        , trainable=False
+        , initializer=tf.zeros_initializer()
+    )
+    if reusing_scope is False:
+        tf.summary.histogram('Nsa', Nsa)
+
+    update_Nsa = tf.scatter_nd_add(Nsa, state_action_pairs, tf.ones_like(states_t, dtype=tf.float32))
     global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
     inc_global_step = global_step.assign_add(1)
-    with tf.control_dependencies([update_optimizer, inc_global_step]):
+    with tf.control_dependencies([update_Nsa, inc_global_step]):
         epsilon = 1e-7
-        updates = (1 / ( epsilon + tf.gather_nd(optimizer, state_action_pairs)) ) * err_estimates
+        lr = (1 / ( epsilon + tf.gather_nd(Nsa, state_action_pairs)) )
+        updates = lr * err_estimates
         train_op = tf.scatter_nd_add(Qs_t, state_action_pairs, updates)
 
     return loss, train_op
@@ -267,7 +275,7 @@ def tabular_learning_with_lr(init_lr, decay_steps, Qs_t, states_t, actions_t, ta
     return loss, train_op
 
 def counter(name):
-    count_t = tf.Variable(0, trainable=False, dtype=tf.int32, name=name)
+    count_t = tf.get_variable(name, shape=[], trainable=False, dtype=tf.int32, initializer=tf.zeros_initializer())
     inc_count_op = count_t.assign_add(1)
 
     return (count_t, inc_count_op)

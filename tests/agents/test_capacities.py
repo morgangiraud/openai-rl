@@ -16,23 +16,23 @@ class TestCapacities(unittest.TestCase):
         with tf.Graph().as_default():
             tf.set_random_seed(1)
 
-            inputs = tf.random_uniform(shape=[2], minval=0, maxval=3, dtype=tf.int32)
-            # inputs = tf.Print(inputs, data=[inputs], message='inputs')
+            inputs_t = tf.random_uniform(shape=[2], minval=0, maxval=3, dtype=tf.int32)
+            # inputs_t = tf.Print(inputs_t, data=[inputs_t], message='inputs_t')
 
             Qs = tf.random_uniform(shape=[nb_states, nb_actions])
             # Qs = tf.Print(Qs, data=[Qs], message='Qs', summarize=12)
 
-            q_preds = tf.gather(Qs, inputs)
+            q_preds = tf.gather(Qs, inputs_t)
             # q_preds = tf.Print(q_preds, data=[q_preds], message='q_preds', summarize=6)
 
             N0 = 100
-            actions, probs = capacities.tabular_eps_greedy(inputs, q_preds, nb_actions, N0, 0., nb_states)
+            actions, probs = capacities.tabular_eps_greedy(inputs_t, q_preds, nb_states, nb_actions, N0, 0.)
             # actions = tf.Print(actions, data=[actions], message='actions')
 # 
             with tf.Session() as sess:
                 sess.run(tf.global_variables_initializer())
 
-                inputs, actions = sess.run([inputs, actions])
+                inputs, actions = sess.run([inputs_t, actions])
                 self.assertEqual(np.array_equal(inputs, [ 2, 1 ]), True)
                 self.assertEqual(np.array_equal(actions, [ 0,  1 ]), True)
 

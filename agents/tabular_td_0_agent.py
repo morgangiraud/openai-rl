@@ -81,16 +81,20 @@ class TabularTD0Agent(TabularMCAgent):
                 tf.summary.histogram('Qarray', self.Qs)
                 self.q_preds_t = tf.gather(self.Qs, self.inputs_plh)
 
-            policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
+            policy_scope = tf.VariableScope(reuse=False, name='Policy')
             with tf.variable_scope(policy_scope):
-                self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
-                    self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
-                )
-                # self.actions_t, self.probs_t = capacities.tabular_UCB(self.Qs, self.inputs_plh)    
-                # self.action_t = self.actions_t[0]
-                # self.q_value_t = self.q_preds_t[0][self.action_t]
+                if 'UCB' in self.config and self.config['UCB']:
+                    self.actions_t, self.probs_t = capacities.tabular_UCB(
+                        self.Qs, self.inputs_plh
+                    )    
+                else:
+                    self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
+                        self.inputs_plh, self.q_preds_t, self.nb_state, self.env.action_space.n, self.N0, self.min_eps
+                    )
+                self.action_t = self.actions_t[0]
+                self.q_value_t = self.q_preds_t[0][self.action_t]
 
-            learning_scope = tf.VariableScope(reuse=False, name='TDLearning')
+            learning_scope = tf.VariableScope(reuse=False, name='Learning')
             with tf.variable_scope(learning_scope):
                 self.rewards_plh = tf.placeholder(tf.float32, shape=[None], name="rewards_plh")
                 self.next_states_plh = tf.placeholder(tf.int32, shape=[None], name="next_states_plh")
@@ -98,9 +102,6 @@ class TabularTD0Agent(TabularMCAgent):
 
                 targets_t = capacities.get_td_target(self.Qs, self.rewards_plh, self.next_states_plh, self.next_actions_plh, self.discount)
                 # When boostraping, the target is non-stationnary, we need a learning rate
-                # self.loss, self.train_op = capacities.tabular_learning(
-                #     self.Qs, self.inputs_plh, self.actions_t, targets_t
-                # )
                 self.loss, self.train_op = capacities.tabular_learning_with_lr(
                     self.lr, self.lr_decay_steps, self.Qs, self.inputs_plh, self.actions_t, targets_t
                 )

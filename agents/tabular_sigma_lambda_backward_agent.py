@@ -79,11 +79,16 @@ class TabularSigmaLambdaBackwardAgent(TabularSigmaAgent):
                 tf.summary.histogram('Qarray', self.Qs)
                 self.q_preds_t = tf.gather(self.Qs, self.inputs_plh)
 
-            policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
+            policy_scope = tf.VariableScope(reuse=False, name='Policy')
             with tf.variable_scope(policy_scope):
-                self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
-                    self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
-                )
+                if 'UCB' in self.config and self.config['UCB']:
+                    self.actions_t, self.probs_t = capacities.tabular_UCB(
+                        self.Qs, self.inputs_plh
+                    )    
+                else:
+                    self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
+                        self.inputs_plh, self.q_preds_t, self.nb_state, self.env.action_space.n, self.N0, self.min_eps
+                    )
                 self.action_t = self.actions_t[0]
                 self.q_value_t = self.q_preds_t[0][self.action_t]
 
@@ -93,7 +98,7 @@ class TabularSigmaLambdaBackwardAgent(TabularSigmaAgent):
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
-            with tf.variable_scope('Training'):
+            with tf.variable_scope('Learning'):
                 self.rewards_plh = tf.placeholder(tf.float32, shape=[None], name="rewards_plh")
                 self.next_states_plh = tf.placeholder(tf.int32, shape=[None], name="next_states_plh")
                 self.next_actions_plh = tf.placeholder(tf.int32, shape=[None], name="next_actions_plh")

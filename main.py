@@ -36,6 +36,7 @@ flags.DEFINE_float('q_scale_lr', 1., 'For actor critic agents, scale variables b
 flags.DEFINE_integer('n_step', 4, 'Number of step used in TD(n) algorithm')
 
 # Policy
+flags.DEFINE_boolean('UCB', False, 'Use the UCB policy for tabular agents')
 flags.DEFINE_integer('N0', 100, 'Offset used in the decay algorithm of epsilon')
 flags.DEFINE_float('min_eps', 1e-2, 'Limit after which the decay stops')
 

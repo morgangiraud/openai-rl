@@ -29,7 +29,9 @@ class TestTabularAgent(unittest.TestCase):
             , 'discount': 1.
             # 'debug': True
         }
+        np.random.seed(0)
         config.update(get_agent_class(config).get_random_config())
+        config['discount'] = 1.
 
         env = gym.make(config['env_name'])
         env.seed(0)
@@ -38,7 +40,7 @@ class TestTabularAgent(unittest.TestCase):
         act, state_id = agent.act(env.reset())
 
         self.assertEqual(act, 1)
-        self.assertEqual(state_id, 65)
+        self.assertEqual(state_id, 144)
 
     def test_mcagent_learn_from_episode(self):
         config = {
@@ -63,7 +65,7 @@ class TestTabularAgent(unittest.TestCase):
         qs = agent.sess.run(agent.Qs)
         # for i,q in enumerate(qs):
         #     print(i,q)
-        self.assertEqual(np.array_equal(qs[201], [22.75, 21.]), True)
+        self.assertEqual(np.sum(np.isclose(qs[126], [ 4.49999952,  1.99999976])) == 2, True)
 
 
 if __name__ == "__main__":

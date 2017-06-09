@@ -72,16 +72,21 @@ class TabularQDoubleERAgent(TabularQERAgent):
             with tf.variable_scope(fixed_q_scope):
                 self.update_fixed_vars_op = capacities.fix_scope(q_scope)
 
-            policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
+            policy_scope = tf.VariableScope(reuse=False, name='Policy')
             with tf.variable_scope(policy_scope):
-                self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
-                    self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
-                )
+                if 'UCB' in self.config and self.config['UCB']:
+                    self.actions_t, self.probs_t = capacities.tabular_UCB(
+                        self.Qs, self.inputs_plh
+                    )    
+                else:
+                    self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
+                        self.inputs_plh, self.q_preds_t, self.nb_state, self.env.action_space.n, self.N0, self.min_eps
+                    )
                 self.action_t = self.actions_t[0]
                 self.q_value_t = self.q_preds_t[0][self.action_t]
 
             # Experienced replay part
-            with tf.variable_scope('ExperienceReplay'):
+            with tf.variable_scope('Learning'):
                 with tf.variable_scope(fixed_q_scope, reuse=True):
                     fixed_Qs = tf.get_variable('Qs')
 

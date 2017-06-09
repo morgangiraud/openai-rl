@@ -16,11 +16,11 @@ def CartPole0phi2(obs, done=False):
 
     phi =  [
         1 if obs[0] < 0 else 0,         # left/right side of the field
-        1 if abs(obs[0]) > 1.2 else 0,  # 1/2th of the field range, danger zone
+        1 if abs(obs[0]) > 1.2 else 0,  # center/border of the field range
         1 if obs[1] < 0 else 0,         # Moving left/right
         1 if abs(obs[1]) > 0.4 else 0,  # Moving slow/fast
         1 if obs[2] < 0 else 0,         # positive/negative angle
-        1 if abs(obs[2]) > 0.10 else 0, # 1/2th of the angle range, danger zone
+        1 if abs(obs[2]) > 0.10 else 0, # center/border of the anglular range
         1 if obs[3] < 0 else 0,         # Rotating left/right
         1 if abs(obs[3]) > 0.4 else 0,  # Rotating slow/fast
     ]
@@ -58,18 +58,18 @@ def Acrobot1phi(obs, done=False):
     phi =  [
         1 if obs[0] < 0.27 else 0 # cos([-1., 1.])~[0, 0.54] -> 2 states
 
-        , 1 if abs(obs[1]) > 0.22 else 0 # sin([-1., 1.])~[-0.84, 0.84] -> 2 states
+        , 1 if abs(obs[1]) > 0.42 else 0 # sin([-1., 1.])~[-0.84, 0.84] -> 2 states
         , 1 if obs[1] < 0 else 0 # sin([-1., 1.])~[-0.84, 0.84] -> 2 states
 
         , 1 if obs[2] < 0.27 else 0 # cos([-1., 1.])~[0, 0.54] -> 2 states
 
-        , 1 if abs(obs[3]) > 0.22 else 0 # sin([-1., 1.])~[-0.84, 0.84] -> 2 states
+        , 1 if abs(obs[3]) > 0.42 else 0 # sin([-1., 1.])~[-0.84, 0.84] -> 2 states
         , 1 if obs[3] < 0 else 0 # sin([-1., 1.])~[-0.84, 0.84] -> 2 states
 
-        , 1 if abs(obs[4]) > 3.14 else 0 # [-4pi, 4pi] -> 2 states
+        , 1 if abs(obs[4]) > 2 * 3.14 else 0 # [-4pi, 4pi] -> 2 states
         , 1 if obs[4] < 0 else 0 # [-4pi, 4pi] -> 2 states
 
-        , 1 if abs(obs[5]) > 3*3.14 else 0 # [-9pi, 9pi] -> 2 states
+        , 1 if abs(obs[5]) > 4.5 * 3.14 else 0 # [-9pi, 9pi] -> 2 states
         , 1 if obs[5] < 0 else 0 # [-9pi, 9pi] -> 2 states
     ]
 

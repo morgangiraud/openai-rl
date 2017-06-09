@@ -75,10 +75,10 @@ class TabularTDLambdaAgent(TabularBasicAgent):
                 tf.summary.histogram('Qarray', self.Qs)
                 self.q_preds_t = tf.gather(self.Qs, self.inputs_plh)
 
-            policy_scope = tf.VariableScope(reuse=False, name='EpsilonGreedyPolicy')
+            policy_scope = tf.VariableScope(reuse=False, name='Policy')
             with tf.variable_scope(policy_scope):
                 self.actions_t, self.probs_t = capacities.tabular_eps_greedy(
-                    self.inputs_plh, self.q_preds_t, self.env.action_space.n, self.N0, self.min_eps, self.nb_state
+                    self.inputs_plh, self.q_preds_t, self.nb_state, self.env.action_space.n, self.N0, self.min_eps
                 )
                 self.action_t = self.actions_t[0]
                 self.q_value_t = self.q_preds_t[0][self.action_t]

@@ -11,9 +11,11 @@ from agents.tabular_expected_sarsa_agent import TabularExpectedSarsaAgent
 from agents.tabular_sigma_agent import TabularSigmaAgent
 from agents.tabular_sigma_lambda_backward_agent import TabularSigmaLambdaBackwardAgent
 
-from agents.deep_q_agent import DeepTDAgent, DQNAgent, DDQNAgent
+from agents.deep_q_agent import DeepTDAgent, DQNAgent, DQNTimeAwareAgent, DDQNAgent
 
 from agents.deep_policy_agent import DeepMCPolicyAgent, MCActorCriticAgent, ActorCriticAgent, A2CAgent, TDACAgent
+
+from agents.cm_agent import CMAgent
 
 __all__ = [
     "BasicAgent",
@@ -31,6 +33,7 @@ __all__ = [
 
     "DeepTDAgent",
     "DQNAgent",
+    "DQNTimeAwareAgent",
     "DDQNAgent",
 
     "DeepMCPolicyAgent",
@@ -38,6 +41,8 @@ __all__ = [
     "ActorCriticAgent",
     "A2CAgent",
     "TDACAgent",
+
+    "CMAgent",
 ]
 
 def make_agent(config, env):

@@ -62,7 +62,7 @@ def test_params(counter, config, params):
         seconds = int( round( time.time() - start_time ))
         print("Run: {} | {}, mean_score {}".format(counter, time.ctime(), mean_score))
         print("%d seconds." % seconds )
-    except:
+    except Exception as inst:
         result = {
             'params': params
             , 'mean_score': 0

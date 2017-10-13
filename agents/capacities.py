@@ -36,19 +36,19 @@ def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
 def tabular_eps_greedy(inputs_t, q_preds_t, nb_states, nb_actions, N0, min_eps):
     reusing_scope = tf.get_variable_scope().reuse
 
-    nb_samples = tf.shape(q_preds_t)[0]
-    max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32)
-
     Ns = tf.get_variable('Ns', shape=[nb_states], dtype=tf.float32, trainable=False, initializer=tf.zeros_initializer())
+    if reusing_scope is False:
+        tf.summary.histogram('Ns', Ns)
+    update_Ns = tf.scatter_add(Ns, inputs_t, tf.ones_like(inputs_t, dtype=tf.float32))
+
     eps = tf.maximum(
         N0 / (N0 + tf.gather(Ns, inputs_t))
         , min_eps
         , name="eps"
     )
-    update_Ns = tf.scatter_add(Ns, inputs_t, tf.ones_like(inputs_t, dtype=tf.float32))
-    if reusing_scope is False:
-        tf.summary.histogram('Ns', Ns)
-        
+    
+    nb_samples = tf.shape(q_preds_t)[0]
+    max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32) 
     probs_t = tf.sparse_to_dense(
         sparse_indices=tf.stack([tf.range(nb_samples), max_actions], 1)
         , output_shape=[nb_samples, nb_actions]
@@ -58,7 +58,6 @@ def tabular_eps_greedy(inputs_t, q_preds_t, nb_states, nb_actions, N0, min_eps):
 
     conditions = tf.greater(tf.random_uniform([nb_samples], 0, 1), eps)
     random_actions = tf.random_uniform(shape=[nb_samples], minval=0, maxval=nb_actions, dtype=tf.int32)
-
     with tf.control_dependencies([update_Ns]): # Force the update call
         actions_t = tf.where(conditions, max_actions, random_actions)
 
@@ -75,11 +74,12 @@ def tabular_UCB(Qs_t, inputs_t):
     if reusing_scope is False:
         tf.summary.histogram('Nsa', Nsa_t)
 
-    with tf.control_dependencies([inc_t]):
-        qs_t = tf.gather(Qs_t, inputs_t)
-        nsa_t = tf.gather(Nsa_t, inputs_t)
+    qs_t = tf.gather(Qs_t, inputs_t)
+    nsa_t = tf.gather(Nsa_t, inputs_t)
 
-    values_t = qs_t + ( (2 * tf.log(tf.cast(timestep, tf.float32))) / nsa_t )**(1/2)
+    # We make sure we increment the timestep before computing the values of each actions
+    with tf.control_dependencies([inc_t]):
+        values_t = qs_t + ( (2 * tf.log(tf.cast(timestep, tf.float32))) / nsa_t )**(1/2)
     actions_t = tf.cast(tf.argmax(values_t, 1), dtype=tf.int32)
     probs_t = tf.one_hot(actions_t, depth=tf.shape(Qs_t)[1])
 
@@ -350,30 +350,32 @@ def policy(network_params, inputs):
 def value_f(network_params, inputs):
     reusing_scope = tf.get_variable_scope().reuse
 
+    w_init = tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
+    b_init = tf.zeros_initializer()  
+
     W1 = tf.get_variable('W1'
         , shape=[ network_params['nb_inputs'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
+        , initializer=w_init
     )
     if reusing_scope is False:
         tf.summary.histogram('W1', W1)
     b1 = tf.get_variable('b1'
         , shape=[ network_params['nb_units'] ]
-        , initializer=tf.zeros_initializer()
+        , initializer=b_init
     )
     if reusing_scope is False:
         tf.summary.histogram('b1', b1)
     a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
-    # a1 = tf.matmul(inputs, W1) + b1
 
     W2 = tf.get_variable('W2'
         , shape=[ network_params['nb_units'], network_params['nb_units'] ]
-        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
+        , initializer=w_init
     )
     if reusing_scope is False:
         tf.summary.histogram('W2', W2)
     b2 = tf.get_variable('b2'
         , shape=[ network_params['nb_units'] ]
-        , initializer=tf.zeros_initializer()
+        , initializer=b_init
     )
     if reusing_scope is False:
         tf.summary.histogram('b2', b2)
@@ -381,13 +383,13 @@ def value_f(network_params, inputs):
 
     W3 = tf.get_variable('W3'
         , shape=[ network_params['nb_units'], network_params['nb_outputs'] ]
-        , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
+        , initializer=w_init
     )
     if reusing_scope is False:
         tf.summary.histogram('W3', W3)
     b3 = tf.get_variable('b3'
         , shape=[ network_params['nb_outputs'] ]
-        , initializer=tf.zeros_initializer()
+        , initializer=b_init
     )
     if reusing_scope is False:
         tf.summary.histogram('b3', b3)

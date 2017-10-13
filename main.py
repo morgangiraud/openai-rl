@@ -29,11 +29,16 @@ flags.DEFINE_float('initial_mean', 0., 'Initial mean for NN')
 flags.DEFINE_float('initial_stddev', 1e-2, 'Initial standard deviation for NN')
 flags.DEFINE_float('lambda', .9, 'Lambda parameters used with eligibility traces')
 flags.DEFINE_float('discount', .999, 'Discount factor')
-flags.DEFINE_float('lr', 1e-3, 'Learning rate')
+flags.DEFINE_float('lr', 1e-3, 'Learning rate for actor/controller network')
+flags.DEFINE_float('m_lr', 1e-3, 'Learning rate for the predictive model/critic')
 flags.DEFINE_integer('lr_decay_steps', 50000, 'Learning rate decay steps for tabular methods')
 flags.DEFINE_integer('nb_units', 20, 'Number of hidden units in Deep learning agents')
 flags.DEFINE_float('q_scale_lr', 1., 'For actor critic agents, scale variables between q loss and policy loss')
 flags.DEFINE_integer('n_step', 4, 'Number of step used in TD(n) algorithm')
+# CM agents
+flags.DEFINE_integer('nb_sleep_iter', 100, 'Used in CM models: number of step used to train the actor in the environment')
+flags.DEFINE_integer('nb_wake_iter', 50, 'Used in CM models: number of step used to train the predictive model of the environment')
+flags.DEFINE_float('initial_m_stddev', 1., 'Initial standard deviation for the predictive model')
 
 # Policy
 flags.DEFINE_boolean('UCB', False, 'Use the UCB policy for tabular agents')
@@ -55,7 +60,7 @@ flags.DEFINE_string('result_dir', dir + '/results/' + flags.FLAGS.env_name + '/'
 
 flags.DEFINE_boolean('play', False, 'Load an agent for playing')
 flags.DEFINE_integer('play_nb', 10, 'Number of games to play')
-flags.DEFINE_integer('random_seed', random.randint(0, sys.maxsize), 'Value of random seed')
+flags.DEFINE_integer('random_seed', random.randint(0, 2**32 - 1), 'Value of random seed')
 
 def main(_):
     config = flags.FLAGS.__flags.copy()

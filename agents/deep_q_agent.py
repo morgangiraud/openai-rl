@@ -17,7 +17,7 @@ class DeepTDAgent(BasicAgent):
         }
 
         self.lr = self.config['lr']
-        self.discount = config['discount']
+        self.discount = self.config['discount']
         self.N0 = self.config['N0']
         self.min_eps = self.config['min_eps']
 
@@ -63,7 +63,7 @@ class DeepTDAgent(BasicAgent):
             self.N = tf.Variable(0., dtype=tf.float32, name='N', trainable=False)
             self.min_eps_t = tf.constant(self.min_eps, tf.float32, name='min_eps')
 
-            self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
+            self.inputs = tf.placeholder(tf.float32, shape=[None, self.q_params['nb_inputs']], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
@@ -76,7 +76,7 @@ class DeepTDAgent(BasicAgent):
 
             with tf.variable_scope('Training'):
                 self.reward = tf.placeholder(tf.float32, shape=[], name="reward")
-                self.next_state = tf.placeholder(tf.float32, shape=[1, self.observation_space.shape[0] + 1], name="nextState")
+                self.next_state = tf.placeholder(tf.float32, shape=[1, self.q_params['nb_inputs']], name="nextState")
                 self.next_action = tf.placeholder(tf.int32, shape=[], name="nextAction")
 
                 with tf.variable_scope(q_scope, reuse=True):
@@ -165,10 +165,10 @@ class DQNAgent(DeepTDAgent):
         self.er_rm_size = self.config['er_rm_size']
 
         self.replayMemoryDt = np.dtype([
-            ('states', 'float32', (self.observation_space.shape[0] + 1,))
+            ('states', 'float32', (self.q_params['nb_inputs'],))
             , ('actions', 'int32')
             , ('rewards', 'float32')
-            , ('next_states', 'float32', (self.observation_space.shape[0] + 1,))
+            , ('next_states', 'float32', (self.q_params['nb_inputs'],))
         ])
         self.replayMemory = np.array([], dtype=self.replayMemoryDt)
 
@@ -219,7 +219,7 @@ class DQNAgent(DeepTDAgent):
         with graph.as_default():
             tf.set_random_seed(self.random_seed)
 
-            self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
+            self.inputs = tf.placeholder(tf.float32, shape=[None, self.q_params['nb_inputs']], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
@@ -235,10 +235,10 @@ class DQNAgent(DeepTDAgent):
                 self.update_fixed_vars_op = capacities.fix_scope(q_scope)
 
             with tf.variable_scope('ExperienceReplay'):
-                self.er_inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERInputs")
+                self.er_inputs = tf.placeholder(tf.float32, shape=[None, self.q_params['nb_inputs']], name="ERInputs")
                 self.er_actions = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
                 self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
-                self.er_next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERNextState")
+                self.er_next_states = tf.placeholder(tf.float32, shape=[None, self.q_params['nb_inputs']], name="ERNextState")
 
                 with tf.variable_scope(q_scope, reuse=True):
                     er_q_values = capacities.value_f(self.q_params, self.er_inputs)
@@ -328,6 +328,83 @@ class DQNAgent(DeepTDAgent):
 
         return
 
+class DQNTimeAwareAgent(DQNAgent):
+    """
+    Agent implementing The DQN (Experience replay abd fixed Q-Net).
+    """
+    def set_agent_props(self):
+        super(DQNTimeAwareAgent, self).set_agent_props()       
+
+        self.q_params['nb_inputs'] += 1 # Add timestep input
+        self.replayMemoryDt = np.dtype([
+            ('states', 'float32', (self.q_params['nb_inputs'],))
+            , ('actions', 'int32')
+            , ('rewards', 'float32')
+            , ('next_states', 'float32', (self.q_params['nb_inputs'],))
+        ])
+        self.replayMemory = np.array([], dtype=self.replayMemoryDt)
+
+    def get_best_config(self, env_name=""):
+        return {
+            'lr': 9e-4
+            , 'nb_units': 22
+            , 'discount': 0.999
+            , 'N0': 2200
+            , 'min_eps': 0.001
+            , 'initial_mean': 0.
+            , 'initial_stddev': 0.2776861144026909
+            , 'er_every': 201
+            , 'er_batch_size': 208
+            , 'er_rm_size': 40000
+        }
+
+    def learn_from_episode(self, env, render):
+        t = 0
+        obs = np.concatenate( (env.reset(), [t]) )
+
+        score = 0
+        av_loss = []
+        done = False
+
+        while True:
+            if render:
+                env.render()
+
+            act, state = self.act(obs)
+            next_obs, reward, done, info = env.step(act)
+            next_obs = np.concatenate( (next_obs, [t + 1]) )
+            next_state = np.concatenate( (next_obs, [float(done)]) )
+
+            if self.replayMemory.shape[0] >= self.er_rm_size:
+                self.replayMemory = np.delete(self.replayMemory, 0)
+            memory = np.array([(state, act, reward, next_state)], dtype=self.replayMemoryDt)
+            self.replayMemory = np.append(self.replayMemory, memory)
+
+            memories = np.random.choice(self.replayMemory, self.er_batch_size)
+            loss, _, timestep, _ = self.sess.run([self.er_loss, self.inc_timestep_op, self.timestep, self.er_train_op], feed_dict={
+                self.er_inputs: memories['states'],
+                self.er_actions: memories['actions'],
+                self.er_rewards: memories['rewards'],
+                self.er_next_states: memories['next_states'],
+            })
+            if timestep % self.er_every == 0:
+                self.sess.run(self.update_fixed_vars_op)
+
+            av_loss.append(loss)
+            score += reward
+            t += 1
+            obs = next_obs
+            if done:
+                break
+
+        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
+            self.score_plh: score,
+            self.loss_plh: np.mean(av_loss)
+        })
+        self.sw.add_summary(summary, episode_id)
+
+        return
+
 class DDQNAgent(DQNAgent):
     """
     Agent implementing The DDQN
@@ -350,7 +427,7 @@ class DDQNAgent(DQNAgent):
         with graph.as_default():
             tf.set_random_seed(self.random_seed)
 
-            self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
+            self.inputs = tf.placeholder(tf.float32, shape=[None, self.q_params['nb_inputs']], name='inputs')
 
             q_scope = tf.VariableScope(reuse=False, name='QValues')
             with tf.variable_scope(q_scope):
@@ -366,10 +443,10 @@ class DDQNAgent(DQNAgent):
                 self.update_fixed_vars_op = capacities.fix_scope(q_scope)
 
             with tf.variable_scope('ExperienceReplay'):
-                self.er_inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERInputs")
+                self.er_inputs = tf.placeholder(tf.float32, shape=[None, self.q_params['nb_inputs']], name="ERInputs")
                 self.er_actions = tf.placeholder(tf.int32, shape=[None], name="ERInputs")
                 self.er_rewards = tf.placeholder(tf.float32, shape=[None], name="ERReward")
-                self.er_next_states = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name="ERNextState")
+                self.er_next_states = tf.placeholder(tf.float32, shape=[None, self.q_params['nb_inputs']], name="ERNextState")
 
                 with tf.variable_scope(q_scope, reuse=True):
                     er_q_values = capacities.value_f(self.q_params, self.er_inputs)

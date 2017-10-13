@@ -117,7 +117,7 @@ class DeepMCPolicyAgent(BasicAgent):
         _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
             self.inputs: history['states'],
             self.actions: history['actions'],
-            self.rewards: get_expected_rewards(history['rewards']),
+            self.rewards: get_expected_rewards(history['rewards'], self.discount),
         })
         summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
             self.score_plh: score,

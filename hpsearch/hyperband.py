@@ -20,7 +20,7 @@ from math import log, ceil
 from time import time, ctime
 
 from agents import make_agent
-from hpsearch.utils import get_score_stat
+from hpsearch.utils import get_stats
 
 dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -154,14 +154,18 @@ def run_params(nb_epochs, params, main_config):
         
         # We train the agent
         agent.train(save_every=-1)
-        agent.save()
-        mean_score, stddev_score = get_score_stat(config['result_dir'])
+        stats = get_stats(config['result_dir'], ["score"])
+        mean_score = np.mean(stats['score'])
+        stddev_score = np.sqrt(np.var(stats['score']))
         result = {
-            'loss': -mean_score
+            'run_id': run_id
+            , 'params': params
+            , 'loss': -mean_score
             , 'mean_score': mean_score
             , 'stddev_score': stddev_score
         }
-    except:
+        agent.save()
+    except Exception as inst:
         result = {
             'loss': 0
             , 'mean_score': 0

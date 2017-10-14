@@ -8,7 +8,7 @@ dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir + '/..')
 
 from agents import make_agent, get_agent_class
-from hpsearch.utils import get_score_stat
+from hpsearch.utils import get_stats
 
 
 def search(config):
@@ -24,7 +24,7 @@ def search(config):
     with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), config['nb_process'])) as executor:
         nb_config = 5 if config['debug'] else 200 * nb_hp_params
         for i in range(nb_config): 
-            params = get_params()
+            params = get_params(config["fixed_params"])
             config.update(params)
 
             futures.append(executor.submit(test_params, i, copy.deepcopy(config), copy.deepcopy(params)))
@@ -43,7 +43,8 @@ def search(config):
 def test_params(counter, config, params):
     start_time = time.time()
 
-    config['result_dir'] = config['result_dir_prefix'] + '/run-' + str(counter).zfill(3)
+    run_id = str(counter).zfill(4)
+    config['result_dir'] = config['result_dir_prefix'] + '/run-' + run_id
 
     try:
         # We create the agent
@@ -52,9 +53,12 @@ def test_params(counter, config, params):
 
         # We train the agent
         agent.train(save_every=-1)
-        mean_score, stddev_score = get_score_stat(config['result_dir'])
+        stats = get_stats(config['result_dir'], ["score"])
+        mean_score = np.mean(stats['score'])
+        stddev_score = np.sqrt(np.var(stats['score']))
         result = {
-            'params': params
+            'run_id': run_id
+            , 'params': params
             , 'mean_score': mean_score
             , 'stddev_score': stddev_score
         }
@@ -70,8 +74,6 @@ def test_params(counter, config, params):
             , 'error': str(sys.exc_info()[0])
             , 'error_message': str(sys.exc_info()[1])
         }
-        
-    if os.path.exists(config['result_dir']):
-        shutil.rmtree(config['result_dir'])
+
 
     return result

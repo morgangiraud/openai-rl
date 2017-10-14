@@ -12,7 +12,8 @@ class CMAgent(BasicAgent):
     def set_agent_props(self):
         self.m_params = {
             'env_state_size': self.observation_space.shape[0] + 1
-            , 'nb_units': self.config['nb_units']
+            , 'nb_actions': self.action_space.n
+            , 'nb_units': self.config['nb_m_units']
             , 'initial_mean': self.config['initial_mean']
             , 'initial_stddev': self.config['initial_m_stddev']
             , 'lr': self.config['m_lr']
@@ -45,13 +46,14 @@ class CMAgent(BasicAgent):
     def get_best_config(self, env_name=""):
         return {
             'random_seed': 1
-            , 'lr': 1e-3
-            , 'm_lr': 1e-3
-            , 'discount': 0.999
-            , 'nb_units': 23 # I like primes
+            , 'lr': 0.003931071005721857
+            , 'm_lr': 0.040658998544615986
+            , 'discount': 0.9824525997089086
+            , 'nb_units': 20
+            , 'nb_m_units': 44
             , 'initial_mean': 0.
-            , 'initial_stddev': 0.1
-            , 'initial_m_stddev': 1.
+            , 'initial_stddev': 0.1965003327244243
+            , 'initial_m_stddev': 0.1919936202610122
             , 'nb_sleep_iter': 50
             , 'nb_wake_iter': 50
         }
@@ -71,6 +73,7 @@ class CMAgent(BasicAgent):
             , 'm_lr': get_lr()
             , 'discount': get_discount()
             , 'nb_units': get_nb_units()
+            , 'nb_m_units': get_nb_units()
             , 'initial_mean': get_initial_mean()
             , 'initial_stddev': get_initial_stddev()
             , 'initial_m_stddev': get_initial_m_stddev()
@@ -91,14 +94,18 @@ class CMAgent(BasicAgent):
             input_scope = tf.VariableScope(reuse=False, name="inputs")
             with tf.variable_scope(input_scope):
                 self.state_input_plh = tf.placeholder(tf.float32, shape=[None, None, self.m_params['env_state_size']], name='state_input_plh')
-                self.action_input_plh = tf.placeholder(tf.float32, shape=[None, None, 1], name='action_input_plh')
+                self.action_input_plh = tf.placeholder(tf.int32, shape=[None, None, 1], name='action_input_plh')
                 
                 input_shape = tf.shape(self.state_input_plh)
                 dynamic_batch_size, dynamic_num_steps = input_shape[0], input_shape[1]
 
-                m_inputs = tf.concat([self.state_input_plh, self.action_input_plh], 2, name="m_inputs")
+                action_input = tf.one_hot(
+                    indices=tf.squeeze(self.action_input_plh, 2)
+                    , depth=self.m_params['nb_actions']
+                )
+                m_inputs = tf.concat([self.state_input_plh, action_input], 2, name="m_inputs")
 
-            m_scope = tf.VariableScope(reuse=False, name="M")
+            m_scope = tf.VariableScope(reuse=False, name="m")
             with tf.variable_scope(m_scope):
                 m_cell = LSTMCell(
                     num_units=self.m_params['nb_units']
@@ -125,7 +132,7 @@ class CMAgent(BasicAgent):
                 state_reward_preds_mat = tf.matmul(m_h_states_mat, WM_proj) 
                 self.state_reward_preds = tf.reshape(state_reward_preds_mat, [dynamic_batch_size, -1, self.m_params['env_state_size'] + 1], name="actions_t")
 
-            m_training_scope = tf.VariableScope(reuse=False, name='M_Training')
+            m_training_scope = tf.VariableScope(reuse=False, name='m_training')
             with tf.variable_scope(m_training_scope):
                 self.m_next_states = tf.placeholder(tf.float32, shape=[None, None, self.m_params['env_state_size']], name="m_next_states")
                 self.m_rewards = tf.placeholder(tf.float32, shape=[None, None, 1], name="m_rewards")
@@ -142,7 +149,7 @@ class CMAgent(BasicAgent):
             self.all_m_summary_t = tf.summary.merge_all(key=self.M_SUMMARIES)
 
             # Graph of the controller
-            c_scope = tf.VariableScope(reuse=False, name="C")
+            c_scope = tf.VariableScope(reuse=False, name="c")
             with tf.variable_scope(c_scope):
                 c_cell = LSTMCell(
                     num_units=self.c_params['nb_units']
@@ -179,7 +186,7 @@ class CMAgent(BasicAgent):
                 self.action_t = self.actions_t[0, 0, 0]
 
             # Interface Controller -> Model
-            # cm_scope = tf.VariableScope(reuse=False, name="CM")
+            # cm_scope = tf.VariableScope(reuse=False, name="cm")
             # with tf.variable_scope(cm_scope):
                 # Compute the activation of the model form the current_state and a potential action from the controller
                 # m_inputs_from_c = tf.concat([self.state_input_plh, tf.cast(self.actions_t, tf.float32)], 2, name="m_inputs_2")
@@ -195,7 +202,7 @@ class CMAgent(BasicAgent):
                 # fast_m_cell_weight = tf.nn.relu(m_final_c + fast_m_cell_weight_update)
 
 
-            c_training_scope = tf.VariableScope(reuse=False, name='C_Training')
+            c_training_scope = tf.VariableScope(reuse=False, name='c_training')
             with tf.variable_scope(c_training_scope):
                 self.c_rewards_plh = tf.placeholder(tf.float32, shape=[None, None, 1], name="c_rewards_plh")
 
@@ -252,7 +259,7 @@ class CMAgent(BasicAgent):
     def train(self, render=False, save_every=49):
         for i in range(0, self.max_iter, self.nb_wake_iter):
             # wake phase
-            for episode_id in range(i, max(i + self.nb_wake_iter, self.max_iter)):
+            for episode_id in range(i, min(i + self.nb_wake_iter, self.max_iter)):
                 self.learn_from_episode(self.env, render)
 
             # sleep phase

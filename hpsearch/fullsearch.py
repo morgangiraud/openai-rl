@@ -9,7 +9,7 @@ sys.path.append(dir + '/..')
 
 from agents import make_agent, get_agent_class
 from hpsearch.hyperband import Hyperband, run_params
-from hpsearch.utils import get_score_stat
+from hpsearch.utils import get_stats
 
 
 def exec_first_pass(counter, config, params):
@@ -24,7 +24,7 @@ def exec_first_pass(counter, config, params):
 
         # We train the agent
         agent.train(save_every=-1)
-        mean_score, stddev_score = get_score_stat(config['result_dir'])
+        mean_score, stddev_score = get_stats(config['result_dir'])
         result = {
             'params': params
             , 'mean_score': mean_score
@@ -67,7 +67,7 @@ def first_pass(config):
     with concurrent.futures.ProcessPoolExecutor(min(multiprocessing.cpu_count(), config['nb_process'])) as executor:
         nb_config = 5 if config['debug'] else 1000
         for i in range(nb_config): 
-            params = get_params()
+            params = get_params(config["fixed_params"])
             config.update(params)
 
             futures.append(executor.submit(exec_first_pass, i, copy.deepcopy(config), params))
@@ -93,7 +93,9 @@ def exec_second_pass(config):
 
         # We train the agent
         agent.train(save_every=-1)
-        mean_score, stddev_score = get_score_stat(config['result_dir'])
+        stats = get_stats(config['result_dir'], ["score"])
+        mean_score = np.mean(stats['score'])
+        stddev_score = np.sqrt(np.var(stats['score']))
         result = {
             'lr': config['lr']
             , 'mean_score': mean_score

@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from agents import BasicAgent, capacities
 from agents.rnn_cell import LSTMCell
-from agents.capacities import get_expected_rewards
+from agents.capacities import get_expected_rewards, build_batches
 
 class CMAgent(BasicAgent):
     """
@@ -32,6 +32,8 @@ class CMAgent(BasicAgent):
 
         self.nb_wake_iter = self.config['nb_wake_iter']
         self.nb_sleep_iter = self.config['nb_sleep_iter']
+
+        self.dtKeys = ['states', 'actions', 'rewards', 'next_states']
         self.memoryDt = np.dtype([
             ('states', 'float32', (self.m_params['env_state_size'],))
             , ('actions', 'float32', (1, ))
@@ -45,17 +47,17 @@ class CMAgent(BasicAgent):
 
     def get_best_config(self, env_name=""):
         return {
-            'random_seed': 1
-            , 'lr': 0.003931071005721857
-            , 'm_lr': 0.040658998544615986
-            , 'discount': 0.9824525997089086
-            , 'nb_units': 20
-            , 'nb_m_units': 44
+            'lr': 3e-3
+            , 'm_lr': 3e-2
+            , 'discount': 0.999
+            , 'nb_units': 15
+            , 'nb_m_units': 23
             , 'initial_mean': 0.
-            , 'initial_stddev': 0.1965003327244243
-            , 'initial_m_stddev': 0.1919936202610122
-            , 'nb_sleep_iter': 50
-            , 'nb_wake_iter': 50
+            , 'initial_stddev': 0.16604040438411888
+            , 'initial_m_stddev': 0.28261298970489424
+            , 'nb_sleep_iter': 32
+            , 'nb_wake_iter': 8
+            # , 'random_seed': 1
         }
         
     @staticmethod
@@ -95,6 +97,7 @@ class CMAgent(BasicAgent):
             with tf.variable_scope(input_scope):
                 self.state_input_plh = tf.placeholder(tf.float32, shape=[None, None, self.m_params['env_state_size']], name='state_input_plh')
                 self.action_input_plh = tf.placeholder(tf.int32, shape=[None, None, 1], name='action_input_plh')
+                self.mask_plh = tf.placeholder(tf.float32, shape=[None, None, 1], name="mask_plh")
                 
                 input_shape = tf.shape(self.state_input_plh)
                 dynamic_batch_size, dynamic_num_steps = input_shape[0], input_shape[1]
@@ -139,7 +142,7 @@ class CMAgent(BasicAgent):
                 y_true = tf.concat([self.m_rewards, self.m_next_states], 2)
 
                 with tf.control_dependencies([self.state_reward_preds]):
-                    self.m_loss = 1 / 2 * tf.reduce_mean(tf.square(self.state_reward_preds - y_true))
+                    self.m_loss = 1 / 2 * tf.reduce_mean(tf.square(self.state_reward_preds - y_true) * self.mask_plh)
                     tf.summary.scalar('m_loss', self.m_loss, collections=[self.M_SUMMARIES])
 
                 m_adam = tf.train.AdamOptimizer(self.m_params['lr'])
@@ -206,6 +209,8 @@ class CMAgent(BasicAgent):
             with tf.variable_scope(c_training_scope):
                 self.c_rewards_plh = tf.placeholder(tf.float32, shape=[None, None, 1], name="c_rewards_plh")
 
+                baseline = tf.reduce_mean(self.c_rewards_plh)
+
                 batch_size, num_steps = tf.shape(self.actions_t)[0], tf.shape(self.actions_t)[1]
                 line_indices = tf.matmul( # Line indice
                     tf.reshape(tf.range(0, batch_size), [-1, 1])
@@ -221,8 +226,9 @@ class CMAgent(BasicAgent):
                 )
 
                 with tf.control_dependencies([self.probs_t]):
-                    log_probs = tf.log(tf.gather_nd(self.probs_t, stacked_actions), name="log_probs")
-                    self.c_loss = - tf.reduce_sum(log_probs * self.c_rewards_plh)
+                    log_probs = tf.expand_dims(tf.log(tf.gather_nd(self.probs_t, stacked_actions)), 2)
+                    masked_log_probs = log_probs * self.mask_plh
+                    self.c_loss = tf.reduce_mean( - tf.reduce_sum(masked_log_probs * (self.c_rewards_plh - baseline), 1))
                     tf.summary.scalar('c_loss', self.c_loss, collections=[self.C_SUMMARIES])
 
                 c_adam = tf.train.AdamOptimizer(self.c_params['lr'])
@@ -232,7 +238,7 @@ class CMAgent(BasicAgent):
             self.all_c_summary_t = tf.summary.merge_all(key=self.C_SUMMARIES)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
-            self.score_sum_t = tf.summary.scalar('score', self.score_plh)
+            self.score_sum_t = tf.summary.scalar('av_score', self.score_plh)
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
 
@@ -258,60 +264,85 @@ class CMAgent(BasicAgent):
 
     def train(self, render=False, save_every=49):
         for i in range(0, self.max_iter, self.nb_wake_iter):
-            # wake phase
-            for episode_id in range(i, min(i + self.nb_wake_iter, self.max_iter)):
-                self.learn_from_episode(self.env, render)
+            # Wake phase
+            # Collect a batched trajectories
+            sequence_history, episode_id = self.collect_samples(self.env, render, self.nb_wake_iter)
+
+            # On-policy learning only
+            batches = build_batches(self.dtKeys, sequence_history, len(sequence_history))
+            self.train_controller(batches[0])
 
             # sleep phase
             self.train_model()
 
-            if save_every > 0 and episode_id % save_every == 0:
+            if save_every > 0 and i % save_every > (i + self.nb_wake_iter) % save_every:
                 self.save()
 
-    def learn_from_episode(self, env, render):
-        obs = env.reset()
-        score = 0
-        c_hidden_state = None
-        episode_history = np.array([], dtype=self.memoryDt)
-        done = False
+    def collect_samples(self, env, render, nb_sequence=1):
+        sequence_history = []
+        av_score = []
+        for i in range(nb_sequence):
+            obs = env.reset()
+            score = 0
+            c_hidden_state = None
+            episode_history = np.array([], dtype=self.memoryDt)
+            done = False
 
-        while True:
-            if render:
-                env.render()
+            while True:
+                if render:
+                    env.render()
 
-            act, state, c_hidden_state = self.act(obs, c_hidden_state)
-            next_obs, reward, done, info = env.step(act)
-            next_state = np.concatenate( (next_obs, [float(done)]) )
+                act, state, c_hidden_state = self.act(obs, c_hidden_state)
+                next_obs, reward, done, info = env.step(act)
+                next_state = np.concatenate( (next_obs, [float(done)]) )
 
-            memory = np.array([(state, act, reward, next_state)], dtype=self.memoryDt)
-            episode_history = np.append(episode_history, memory)
+                memory = np.array([(state, act, reward, next_state)], dtype=self.memoryDt)
+                episode_history = np.append(episode_history, memory)
 
-            score += reward
-            obs = next_obs
-            if done:
-                break
+                score += reward
+                obs = next_obs
+                if done:
+                    break
+            sequence_history.append(episode_history)
+            av_score.append(score)
+
+            self.sess.run(self.inc_ep_id_op)
+
+        summary, episode_id = self.sess.run([self.score_sum_t, self.episode_id], feed_dict={
+            self.score_plh: np.mean(score),
+        })
+        self.sw.add_summary(summary, episode_id)
+
+        self.episode_histories += sequence_history
+
+        return sequence_history, episode_id
+
+    def train_controller(self, batch):
+        for i, episode_rewards in enumerate(batch['rewards']):
+            batch['rewards'][i] = get_expected_rewards(episode_rewards, self.discount)
 
         _, c_sum, c_step = self.sess.run([self.c_train_op, self.all_c_summary_t, self.c_global_step], feed_dict={
-            self.state_input_plh: [ episode_history['states'] ]
-            , self.actions_t: [ episode_history['actions'] ]
-            , self.c_rewards_plh: [ get_expected_rewards(episode_history['rewards'], self.discount) ] 
+            self.state_input_plh: batch['states']
+            , self.actions_t: batch['actions']
+            , self.c_rewards_plh: batch['rewards']
+            , self.mask_plh: batch['mask'] 
         })
-        score_summary, _, episode_id = self.sess.run([self.score_sum_t, self.inc_ep_id_op, self.episode_id], feed_dict={
-            self.score_plh: score
-        })
+            
         self.sw.add_summary(c_sum, c_step)
-        self.sw.add_summary(score_summary, episode_id)
 
-        self.episode_histories.append(episode_history)
+        return
 
     def train_model(self):
+        batches = build_batches(self.dtKeys, self.episode_histories, self.nb_sleep_iter)
+
         # We train on maximum a hundered episode each time
-        for episode in np.random.permutation(self.episode_histories)[:self.nb_sleep_iter]:
+        for batch in batches:
             _, m_sum, m_step = self.sess.run([self.m_train_op, self.all_m_summary_t, self.m_global_step], feed_dict={
-                self.state_input_plh: [ episode['states'] ]
-                , self.action_input_plh: [ episode['actions'] ] 
-                , self.m_rewards: [ episode['rewards'] ] 
-                , self.m_next_states: [ episode['next_states'] ]
+                self.state_input_plh: batch['states']
+                , self.action_input_plh: batch['actions']
+                , self.m_rewards: batch['rewards']
+                , self.m_next_states: batch['next_states']
+                , self.mask_plh: batch['mask'] 
             })
 
             self.sw.add_summary(m_sum, m_step)

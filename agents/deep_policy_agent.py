@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from agents import BasicAgent, capacities
-from agents.capacities import get_expected_rewards
+from agents.capacities import get_expected_rewards, build_batches
 
 class DeepMCPolicyAgent(BasicAgent):
     """
@@ -17,15 +17,23 @@ class DeepMCPolicyAgent(BasicAgent):
             , 'initial_stddev': self.config['initial_stddev']
         }
         self.lr = self.config['lr']
-        self.discount = config['discount']
+        self.discount = self.config['discount']
+        self.batch_size = 8
+
+        self.dtKeys = ['states', 'actions', 'rewards']
+        self.memoryDt = np.dtype([
+            ('states', 'float32', (self.policy_params['nb_inputs'],))
+            , ('actions', 'int32', (1,))
+            , ('rewards', 'float32', (1,))
+        ])
 
     def get_best_config(self, env_name=""):
         return {
-            'lr': 1e-3
-            , 'discount': 0.8209896594244546
+            'lr': 3e-3
+            , 'discount': 0.99
             , 'nb_units': 41
             , 'initial_mean': 0.
-            , 'initial_stddev': 0.423321967449976
+            , 'initial_stddev': 0.3
         }
 
     @staticmethod
@@ -48,29 +56,54 @@ class DeepMCPolicyAgent(BasicAgent):
         return random_config
 
     def build_graph(self, graph):
+        np.random.seed(self.random_seed)
         with graph.as_default():
             tf.set_random_seed(self.random_seed)
 
-            self.inputs = tf.placeholder(tf.float32, shape=[None, self.observation_space.shape[0] + 1], name='inputs')
+            # Dims: bs x num_steps x state_size
+            self.inputs = tf.placeholder(tf.float32, shape=[None, None, self.policy_params['nb_inputs']], name='inputs')
+            input_shape = tf.shape(self.inputs)
+            dynamic_batch_size, dynamic_num_steps = input_shape[0], input_shape[1]
 
             policy_scope = tf.VariableScope(reuse=False, name='Policy')
             with tf.variable_scope(policy_scope):
-                self.probs, self.actions = capacities.policy(self.policy_params, self.inputs)
-            self.action_t = tf.squeeze(self.actions, 1)[0]
+                policy_inputs = tf.reshape(self.inputs, [-1, self.policy_params['nb_inputs']])
+                probs, actions = capacities.policy(self.policy_params, policy_inputs)
+                self.probs = tf.reshape(probs, [dynamic_batch_size, dynamic_num_steps, self.policy_params['nb_outputs']])
+                self.actions = tf.reshape(actions, [dynamic_batch_size, dynamic_num_steps, 1])
+            self.action_t = self.actions[0, 0, 0]
 
             with tf.variable_scope('Training'):
-                self.rewards = tf.placeholder(tf.float32, shape=[None], name="reward")
-                stacked_actions = tf.stack([tf.range(0, tf.shape(self.actions)[0]), tf.squeeze(self.actions, 1)], 1)
-                log_probs = tf.log(tf.gather_nd(self.probs, stacked_actions))
-                # log_probs = tf.Print(log_probs, data=[tf.shape(self.probs), tf.shape(self.actions), tf.shape(log_probs)], message="tf.shape(log_probs):")
-                self.loss = - tf.reduce_sum(log_probs * self.rewards)
+                self.rewards = tf.placeholder(tf.float32, shape=[None, None, 1], name="reward")
+                self.mask_plh = tf.placeholder(tf.float32, shape=[None, None, 1], name="mask_plh")
+
+                baseline = tf.reduce_mean(self.rewards)
+                
+                batch_size, num_steps = tf.shape(self.actions)[0], tf.shape(self.actions)[1]
+                line_indices = tf.matmul( # Line indice
+                    tf.reshape(tf.range(0, batch_size), [-1, 1])
+                    , tf.ones([1, num_steps], dtype=tf.int32)
+                )
+                column_indices = tf.matmul( # Column indice
+                    tf.ones([batch_size, 1], dtype=tf.int32)
+                    , tf.reshape(tf.range(0, num_steps), [1, -1])
+                )
+                depth_indices = tf.cast(tf.squeeze(self.actions, 2), tf.int32)
+                stacked_actions = tf.stack(
+                    [line_indices, column_indices, depth_indices], 2
+                )
+
+                log_probs = tf.expand_dims(tf.log(tf.gather_nd(self.probs, stacked_actions)), 2)
+                masked_log_probs = log_probs * self.mask_plh
+                # We want to average on sequence
+                self.loss = tf.reduce_mean( - tf.reduce_sum(masked_log_probs * (self.rewards - baseline), 1))
 
                 adam = tf.train.AdamOptimizer(self.lr)
                 self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
                 self.train_op = adam.minimize(self.loss, global_step=self.global_step)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
-            self.score_sum_t = tf.summary.scalar('score', self.score_plh)
+            self.score_sum_t = tf.summary.scalar('av_score', self.score_plh)
             self.loss_plh = tf.placeholder(tf.float32, shape=[])
             self.loss_sum_t = tf.summary.scalar('loss', self.loss_plh)
             self.all_summary_t = tf.summary.merge_all()
@@ -84,48 +117,79 @@ class DeepMCPolicyAgent(BasicAgent):
         return graph
 
     def act(self, obs):
-        state = [ np.concatenate((obs, [0])) ]
+        state = np.concatenate((obs, [float(False)]))
         act = self.sess.run(self.action_t, feed_dict={
-            self.inputs: state
+            self.inputs: [ [ state ] ]
         })
 
         return (act, state)
 
-    def learn_from_episode(self, env, render):
-        obs = env.reset()
-        score = 0
-        historyType = np.dtype([('states', 'float32', (env.observation_space.shape[0] + 1,)), ('actions', 'int32', (1,)), ('rewards', 'float32')])
-        history = np.array([], dtype=historyType)
-        done = False
+    def train(self, render=False, save_every=49):
+        for i in range(0, self.max_iter, self.batch_size):
+            # Collect a batched trajectories
+            sequence_history, episode_id = self.collect_samples(self.env, render, self.batch_size)
 
-        while True:
-            if render:
-                env.render()
+            # On-policy learning only
+            batches = build_batches(self.dtKeys, sequence_history, len(sequence_history))
+            self.train_controller(batches[0])
 
-            act, state = self.act(obs)
-            next_obs, reward, done, info = env.step(act)
+            if save_every > 0 and i % save_every > (i + self.batch_size) % save_every:
+                self.save()
 
-            memory = np.array([(np.concatenate((obs, [0])), act, reward)], dtype=historyType)
-            history = np.append(history, memory)
 
-            score += reward
-            obs = next_obs
-            if done:
-                break
+    def collect_samples(self, env, render, nb_sequence=1):
+        sequence_history = []
+        av_score = []
+        for i in range(nb_sequence):
+            obs = env.reset()
+            score = 0
+            history = np.array([], dtype=self.memoryDt)
+            done = False
 
-        # Learning
-        _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
-            self.inputs: history['states'],
-            self.actions: history['actions'],
-            self.rewards: get_expected_rewards(history['rewards'], self.discount),
+            while True:
+                if render:
+                    env.render()
+
+                act, state = self.act(obs)
+                next_obs, reward, done, info = env.step(act)
+
+                memory = np.array([(state, act, reward)], dtype=self.memoryDt)
+                history = np.append(history, memory)
+
+                score += reward
+                obs = next_obs
+                if done:
+                    break
+            sequence_history.append(history)
+            av_score.append(score)
+
+            self.sess.run(self.inc_ep_id_op)
+
+        summary, episode_id = self.sess.run([self.score_sum_t, self.episode_id], feed_dict={
+            self.score_plh: np.mean(score),
         })
-        summary, _, episode_id = self.sess.run([self.all_summary_t, self.inc_ep_id_op, self.episode_id], feed_dict={
-            self.score_plh: score,
-            self.loss_plh: loss
+        self.sw.add_summary(summary, episode_id)
+
+        return sequence_history, episode_id
+
+    def train_controller(self, batch):
+        for i, episode_rewards in enumerate(batch['rewards']):
+            batch['rewards'][i] = get_expected_rewards(episode_rewards, self.discount)
+
+        _, loss = self.sess.run([self.train_op, self.loss], feed_dict={
+            self.inputs: batch['states']
+            , self.actions: batch['actions']
+            , self.rewards: batch['rewards']
+            , self.mask_plh: batch['mask'] 
+        })
+            
+        summary, episode_id = self.sess.run([self.loss_sum_t, self.episode_id], feed_dict={
+            self.loss_plh: np.mean(loss),
         })
         self.sw.add_summary(summary, episode_id)
 
         return
+
 
 class MCActorCriticAgent(DeepMCPolicyAgent):
     """

@@ -26,6 +26,7 @@ def search(config):
         for i in range(nb_config): 
             params = get_params(config["fixed_params"])
             config.update(params)
+            config['random_seed'] = np.random.randint(1, 4, 1)[0]
 
             futures.append(executor.submit(test_params, i, copy.deepcopy(config), copy.deepcopy(params)))
         concurrent.futures.wait(futures)
@@ -47,8 +48,9 @@ def test_params(counter, config, params):
     config['result_dir'] = config['result_dir_prefix'] + '/run-' + run_id
 
     try:
-        # We create the agent
+        # We create the env and agent
         env = gym.make(config['env_name'])
+        env.seed(config['random_seed'])
         agent = make_agent(config, env)
 
         # We train the agent

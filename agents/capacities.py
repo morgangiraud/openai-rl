@@ -295,6 +295,26 @@ def fix_scope(from_scope):
 
     return update_fixed_vars_op
 
+def build_batches(dtKeys, sequence_history, batch_size):
+    sequence_history = np.random.permutation(sequence_history)
+
+    batches = []
+    for i in range(0, len(sequence_history), batch_size):
+        history_chunk = sequence_history[i:i + batch_size]
+        max_seq_len = len(max(history_chunk, key=lambda x: len(x)))
+        
+        batch = { key: [] for key in dtKeys }
+        batch['mask'] = []
+        for history in history_chunk:
+            seq_len = len(history)
+            for key in dtKeys:
+                padded_data = np.lib.pad(history[key], [[0, max_seq_len - seq_len], [0, 0]], 'constant', constant_values=(0))
+                batch[key].append(padded_data)
+            batch['mask'].append([[1]] * seq_len + [[0]] * (max_seq_len - seq_len))
+
+        batches.append(batch)
+
+    return batches
 
 def policy(network_params, inputs):
     reusing_scope = tf.get_variable_scope().reuse

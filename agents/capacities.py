@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
 
+from agents.rnn_cell import LSTMCell
+
 # All those capacities will be applied in the current default graph
 # Use it this way:
 # with my_graph.as_default():
@@ -284,7 +286,7 @@ def fix_scope(from_scope):
     update_fixed_vars_op = []
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=from_scope.name):
         fixed = tf.get_variable(
-            var.name.split("/")[-1].split(":")[0]
+            var.name.split(":")[0].strip(from_scope.name + "/")
             , shape=var.get_shape()
             , initializer=tf.constant_initializer(0.)
             , trainable=False
@@ -416,3 +418,66 @@ def value_f(network_params, inputs):
     values = tf.matmul(a2, W3) + b3
 
     return values
+
+def predictive_model(network_params, m_inputs, dynamic_batch_size, m_initial_state=None):
+    reusing_scope = tf.get_variable_scope().reuse
+
+    m_cell = LSTMCell(
+        num_units=network_params['nb_units']
+        , initializer=tf.truncated_normal_initializer(
+            mean=network_params['initial_mean']
+            , stddev=network_params['initial_stddev']
+        )
+        , reuse=reusing_scope
+    )
+    # The first time you call this function, you obtain a placeholder
+    # for the initial state
+    # The second time (if you reuse the variables), you need to pass in the initial state
+    if not reusing_scope:
+        m_initial_state = m_cell.zero_state(dynamic_batch_size, dtype=tf.float32)
+    m_c_h_states, m_final_state = tf.nn.dynamic_rnn(m_cell, m_inputs, initial_state=m_initial_state)
+    m_c_states, m_h_states = tf.split(value=m_c_h_states, num_or_size_splits=[network_params['nb_units'], network_params['nb_units']], axis=2)
+
+    # Compute the Controller projection
+    WM_proj = tf.get_variable(
+        "WM_proj"
+        , shape=[network_params['nb_units'], network_params['env_state_size'] + 1]
+        , dtype=tf.float32
+        , initializer=tf.truncated_normal_initializer(
+            mean=network_params['initial_mean']
+            , stddev=network_params['initial_stddev']
+        )
+    )
+    m_h_states_mat = tf.reshape(m_h_states, [-1, network_params['nb_units']])
+    state_reward_preds_mat = tf.matmul(m_h_states_mat, WM_proj) 
+    state_reward_preds = tf.reshape(state_reward_preds_mat, [dynamic_batch_size, -1, network_params['env_state_size'] + 1], name="actions_t")
+
+    return state_reward_preds, m_final_state, m_initial_state
+
+# This is weird, it seems to trouble the learning
+def projection(proj_params, inputs):
+    reusing_scope = tf.get_variable_scope().reuse
+
+    input_shape = tf.shape(inputs)
+    dynamic_batch_size, dynamic_num_steps = input_shape[0], input_shape[1]
+
+    WC_proj = tf.get_variable(
+        "WC_proj"
+        , shape=[proj_params['nb_units'], proj_params['nb_actions']]
+        , dtype=tf.float32
+        , initializer=tf.truncated_normal_initializer(
+            mean=proj_params['initial_mean']
+            , stddev=proj_params['initial_stddev']
+        )
+    )
+    bC_proj = tf.get_variable("bC_proj", shape=[proj_params['nb_actions']], dtype=tf.float32)
+    inputs_mat = tf.reshape(inputs, [-1, proj_params['nb_units']])
+    logits = tf.matmul(inputs_mat, WC_proj)
+
+    preds_mat = tf.nn.softmax(logits, 1)
+    preds_t = tf.reshape(preds_mat, [dynamic_batch_size, -1, proj_params['nb_actions']], name="preds_t")
+
+    actions_mat = tf.cast(tf.multinomial(logits, 1), tf.int32)
+    actions_t = tf.reshape(actions_mat, [dynamic_batch_size, -1, 1], name="actions_t")
+
+    return preds_t, actions_t

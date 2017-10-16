@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from agents import BasicAgent, capacities
-from agents.rnn_cell import LSTMCell
+from agents.rnn_cell import LSTMCell, CMCell
 from agents.capacities import get_expected_rewards, build_batches
 
 class CMAgent(BasicAgent):
@@ -110,30 +110,11 @@ class CMAgent(BasicAgent):
 
             m_scope = tf.VariableScope(reuse=False, name="m")
             with tf.variable_scope(m_scope):
-                m_cell = LSTMCell(
-                    num_units=self.m_params['nb_units']
-                    , initializer=tf.truncated_normal_initializer(
-                        mean=self.m_params['initial_mean']
-                        , stddev=self.m_params['initial_stddev']
-                    )
-                )
-                self.m_state = m_cell.zero_state(dynamic_batch_size, dtype=tf.float32)
-                m_c_h_states, self.m_final_state = tf.nn.dynamic_rnn(m_cell, m_inputs, initial_state=self.m_state)
-                m_c_states, m_h_states = tf.split(value=m_c_h_states, num_or_size_splits=[self.m_params['nb_units'], self.m_params['nb_units']], axis=2)
+                self.state_reward_preds, self.m_final_state, self.m_initial_state = capacities.predictive_model(self.m_params, m_inputs, dynamic_batch_size)
 
-                # Compute the Controller projection
-                WM_proj = tf.get_variable(
-                    "WM_proj"
-                    , shape=[self.m_params['nb_units'], self.m_params['env_state_size'] + 1]
-                    , dtype=tf.float32
-                    , initializer=tf.truncated_normal_initializer(
-                        mean=self.m_params['initial_mean']
-                        , stddev=self.m_params['initial_stddev']
-                    )
-                )
-                m_h_states_mat = tf.reshape(m_h_states, [-1, self.m_params['nb_units']])
-                state_reward_preds_mat = tf.matmul(m_h_states_mat, WM_proj) 
-                self.state_reward_preds = tf.reshape(state_reward_preds_mat, [dynamic_batch_size, -1, self.m_params['env_state_size'] + 1], name="actions_t")
+            fixed_m_scope = tf.VariableScope(reuse=False, name='FixedM')
+            with tf.variable_scope(fixed_m_scope):
+                self.update_m_fixed_vars_op = capacities.fix_scope(m_scope)
 
             m_training_scope = tf.VariableScope(reuse=False, name='m_training')
             with tf.variable_scope(m_training_scope):
@@ -147,6 +128,7 @@ class CMAgent(BasicAgent):
 
                 m_adam = tf.train.AdamOptimizer(self.m_params['lr'])
                 self.m_global_step = tf.Variable(0, trainable=False, name="m_global_step")
+                tf.summary.scalar('m_global_step', self.m_global_step, collections=[self.C_SUMMARIES])
                 self.m_train_op = m_adam.minimize(self.m_loss, global_step=self.m_global_step)
             
             self.all_m_summary_t = tf.summary.merge_all(key=self.M_SUMMARIES)
@@ -154,56 +136,38 @@ class CMAgent(BasicAgent):
             # Graph of the controller
             c_scope = tf.VariableScope(reuse=False, name="c")
             with tf.variable_scope(c_scope):
-                c_cell = LSTMCell(
-                    num_units=self.c_params['nb_units']
+                # c_cell = LSTMCell(
+                #     num_units=self.c_params['nb_units']
+                #     , initializer=tf.truncated_normal_initializer(
+                #         mean=self.c_params['initial_mean']
+                #         , stddev=self.c_params['initial_stddev']
+                #     )
+                # )
+                # self.c_initial_state = c_cell.zero_state(dynamic_batch_size, dtype=tf.float32)
+                # c_c_h_states, self.c_final_state = tf.nn.dynamic_rnn(c_cell, self.state_input_plh, initial_state=self.c_initial_state)
+                # c_c_states, c_h_states = tf.split(value=c_c_h_states, num_or_size_splits=[self.c_params['nb_units'], self.c_params['nb_units']], axis=2)
+                # # Compute the Controller projection
+                # self.probs_t, self.actions_t = projection_func(c_h_states)
+                m_params = self.m_params
+                model_func = lambda m_inputs, m_state: capacities.predictive_model(m_params, m_inputs, dynamic_batch_size, m_state)
+                c_params = self.c_params
+                projection_func = lambda inputs:capacities.projection(c_params, inputs)
+                cm_cell = CMCell(
+                    num_units=self.c_params['nb_units'], m_units=self.m_params['nb_units']
+                    , fixed_model_scope=fixed_m_scope, model_func=model_func
+                    , projection_func=projection_func, num_proj=self.c_params['nb_actions']
                     , initializer=tf.truncated_normal_initializer(
                         mean=self.c_params['initial_mean']
                         , stddev=self.c_params['initial_stddev']
                     )
                 )
-                self.c_initial_state = c_cell.zero_state(dynamic_batch_size, dtype=tf.float32)
-                c_c_h_states, self.c_final_state = tf.nn.dynamic_rnn(c_cell, self.state_input_plh, initial_state=self.c_initial_state)
-                c_c_states, c_h_states = tf.split(value=c_c_h_states, num_or_size_splits=[self.c_params['nb_units'], self.c_params['nb_units']], axis=2)
-                
-                # Compute the Controller projection
-                WC_proj = tf.get_variable(
-                    "WC_proj"
-                    , shape=[self.c_params['nb_units'], self.c_params['nb_actions']]
-                    , dtype=tf.float32
-                    , initializer=tf.truncated_normal_initializer(
-                        mean=self.c_params['initial_mean']
-                        , stddev=self.c_params['initial_stddev']
-                    )
-                )
-                bC_proj = tf.get_variable("bC_proj", shape=[self.c_params['nb_actions']], dtype=tf.float32)
-                c_h_states_mat = tf.reshape(c_h_states, [-1, self.c_params['nb_units']])
-                logits = tf.matmul(c_h_states_mat, WC_proj)
 
-                probs_t = tf.nn.softmax(logits, 1, name="probs_t")
-                self.probs_t = tf.reshape(probs_t, [dynamic_batch_size, -1, self.c_params['nb_actions']], name="actions_t")
-
-                actions_t = tf.cast(tf.multinomial(logits, 1), tf.int32)
-                self.actions_t = tf.reshape(actions_t, [dynamic_batch_size, -1, 1], name="actions_t")
-
+                self.cm_initial_state = cm_cell.zero_state(dynamic_batch_size, dtype=tf.float32)
+                probs_and_actions_t, self.cm_final_state = tf.nn.dynamic_rnn(cm_cell, self.state_input_plh, initial_state=self.cm_initial_state)
+                self.probs_t, actions_t = tf.split(value=probs_and_actions_t, num_or_size_splits=[self.c_params['nb_actions'], 1], axis=2)
+                self.actions_t = tf.cast(actions_t, tf.int32)
                 # helper tensor used for inference
                 self.action_t = self.actions_t[0, 0, 0]
-
-            # Interface Controller -> Model
-            # cm_scope = tf.VariableScope(reuse=False, name="cm")
-            # with tf.variable_scope(cm_scope):
-                # Compute the activation of the model form the current_state and a potential action from the controller
-                # m_inputs_from_c = tf.concat([self.state_input_plh, tf.cast(self.actions_t, tf.float32)], 2, name="m_inputs_2")
-                # _, self.m_final_state_tmp = m_cell(m_inputs_from_c, self.m_state)
-
-                # print(self.m_final_state_tmp)
-                # # We compute the fast weights for model cell state
-                # c_final_c, c_final_h = self.c_final_state
-                # m_final_c, m_final_h = self.m_final_state_tmp
-                # W_cm = tf.get_variable('W_cm', shape=[self.m_params['nb_units'], self.m_params['nb_units']])
-                # b_cm =tf.get_variable('b_cm', shape=[self.m_params['nb_units']])
-                # fast_m_cell_weight_update = tf.nn.relu(tf.matmul(c_final_h, W_cm) + b_cm)
-                # fast_m_cell_weight = tf.nn.relu(m_final_c + fast_m_cell_weight_update)
-
 
             c_training_scope = tf.VariableScope(reuse=False, name='c_training')
             with tf.variable_scope(c_training_scope):
@@ -233,6 +197,7 @@ class CMAgent(BasicAgent):
 
                 c_adam = tf.train.AdamOptimizer(self.c_params['lr'])
                 self.c_global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES], dtype=tf.int32)
+                tf.summary.scalar('c_global_step', self.c_global_step, collections=[self.C_SUMMARIES])
                 self.c_train_op = c_adam.minimize(self.c_loss, global_step=self.c_global_step)
 
             self.all_c_summary_t = tf.summary.merge_all(key=self.C_SUMMARIES)
@@ -241,6 +206,8 @@ class CMAgent(BasicAgent):
             self.score_sum_t = tf.summary.scalar('av_score', self.score_plh)
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
+            self.episode_id_sum = tf.summary.scalar('episode_id', self.episode_id)
+            self.time, self.inc_time_op = capacities.counter("time")
 
             # Playing part
             self.pscore_plh = tf.placeholder(tf.float32, shape=[])
@@ -248,43 +215,47 @@ class CMAgent(BasicAgent):
 
         return graph
 
-    def act(self, obs, prev_c_hidden_state=None):
+    def act(self, obs, cm_prev_state=None):
         state = np.concatenate((obs, [float(False)]))
-        if prev_c_hidden_state is None:
-            act, c_hidden_state = self.sess.run([self.action_t, self.c_final_state], feed_dict={
+        if cm_prev_state is None:
+            act, cm_prev_state = self.sess.run([self.action_t, self.cm_final_state], feed_dict={
                 self.state_input_plh: [ [ state ] ]
             })
         else:
-            act, c_hidden_state = self.sess.run([self.action_t, self.c_final_state], feed_dict={
+            act, cm_prev_state = self.sess.run([self.action_t, self.cm_final_state], feed_dict={
                 self.state_input_plh: [ [ state ] ]
-                , self.c_initial_state: prev_c_hidden_state
+                , self.cm_initial_state: cm_prev_state
             })
 
-        return act, state, c_hidden_state
+        return act, state, cm_prev_state
 
     def train(self, render=False, save_every=49):
+        self.sess.run(self.update_m_fixed_vars_op)
         for i in range(0, self.max_iter, self.nb_wake_iter):
             # Wake phase
             # Collect a batched trajectories
-            sequence_history, episode_id = self.collect_samples(self.env, render, self.nb_wake_iter)
+            sequence_history = self.collect_samples(self.env, render, self.nb_wake_iter)
 
             # On-policy learning only
             batches = build_batches(self.dtKeys, sequence_history, len(sequence_history))
             self.train_controller(batches[0])
 
             # sleep phase
-            self.train_model()
+            # If you train the model before the controller
+            # The controller is not learning on-policy anymore
+            self.train_model(sequence_history)
 
             if save_every > 0 and i % save_every > (i + self.nb_wake_iter) % save_every:
                 self.save()
 
     def collect_samples(self, env, render, nb_sequence=1):
+        # print('Collecting samples')
         sequence_history = []
         av_score = []
         for i in range(nb_sequence):
             obs = env.reset()
             score = 0
-            c_hidden_state = None
+            cm_prev_state = None
             episode_history = np.array([], dtype=self.memoryDt)
             done = False
 
@@ -292,7 +263,7 @@ class CMAgent(BasicAgent):
                 if render:
                     env.render()
 
-                act, state, c_hidden_state = self.act(obs, c_hidden_state)
+                act, state, cm_prev_state = self.act(obs, cm_prev_state)
                 next_obs, reward, done, info = env.step(act)
                 next_state = np.concatenate( (next_obs, [float(done)]) )
 
@@ -306,38 +277,41 @@ class CMAgent(BasicAgent):
             sequence_history.append(episode_history)
             av_score.append(score)
 
-            self.sess.run(self.inc_ep_id_op)
+            episode_id_sum, _, time, _ = self.sess.run([self.episode_id_sum, self.inc_ep_id_op, self.time, self.inc_time_op])
+            self.sw.add_summary(episode_id_sum, time)
 
-        summary, episode_id = self.sess.run([self.score_sum_t, self.episode_id], feed_dict={
+        summary = self.sess.run(self.score_sum_t, feed_dict={
             self.score_plh: np.mean(score),
         })
-        self.sw.add_summary(summary, episode_id)
+        self.sw.add_summary(summary, time)
 
         self.episode_histories += sequence_history
 
-        return sequence_history, episode_id
+        return sequence_history
 
     def train_controller(self, batch):
+        # print('Training controller')
         for i, episode_rewards in enumerate(batch['rewards']):
             batch['rewards'][i] = get_expected_rewards(episode_rewards, self.discount)
 
-        _, c_sum, c_step = self.sess.run([self.c_train_op, self.all_c_summary_t, self.c_global_step], feed_dict={
+        _, c_sum, time, _ = self.sess.run([self.c_train_op, self.all_c_summary_t, self.time, self.inc_time_op], feed_dict={
             self.state_input_plh: batch['states']
             , self.actions_t: batch['actions']
             , self.c_rewards_plh: batch['rewards']
             , self.mask_plh: batch['mask'] 
         })
             
-        self.sw.add_summary(c_sum, c_step)
+        self.sw.add_summary(c_sum, time)
 
         return
 
-    def train_model(self):
+    def train_model(self, sequence_history):
+        # print('Training model')
         batches = build_batches(self.dtKeys, self.episode_histories, self.nb_sleep_iter)
+        seq_batches = build_batches(self.dtKeys, sequence_history, self.nb_sleep_iter)
 
-        # We train on maximum a hundered episode each time
-        for batch in batches:
-            _, m_sum, m_step = self.sess.run([self.m_train_op, self.all_m_summary_t, self.m_global_step], feed_dict={
+        for batch in seq_batches + batches[:2]:
+            _, m_sum, time, _ = self.sess.run([self.m_train_op, self.all_m_summary_t, self.time, self.inc_time_op], feed_dict={
                 self.state_input_plh: batch['states']
                 , self.action_input_plh: batch['actions']
                 , self.m_rewards: batch['rewards']
@@ -345,4 +319,6 @@ class CMAgent(BasicAgent):
                 , self.mask_plh: batch['mask'] 
             })
 
-            self.sw.add_summary(m_sum, m_step)
+            self.sw.add_summary(m_sum, time)
+
+        self.sess.run(self.update_m_fixed_vars_op)

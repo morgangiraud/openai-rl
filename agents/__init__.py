@@ -13,7 +13,7 @@ from agents.tabular_sigma_lambda_backward_agent import TabularSigmaLambdaBackwar
 
 from agents.deep_q_agent import DeepTDAgent, DQNAgent, DQNTimeAwareAgent, DDQNAgent
 
-from agents.deep_policy_agent import DeepMCPolicyAgent, MCActorCriticAgent, ActorCriticAgent, A2CAgent, TDACAgent
+from agents.deep_policy_agent import PolicyAgent, ActorQCriticAgent, ActorCriticAgent, A2CAgent, TDACAgent
 
 from agents.cm_agent import CMAgent
 
@@ -36,8 +36,8 @@ __all__ = [
     "DQNTimeAwareAgent",
     "DDQNAgent",
 
-    "DeepMCPolicyAgent",
-    "MCActorCriticAgent",
+    "PolicyAgent",
+    "ActorQCriticAgent",
     "ActorCriticAgent",
     "A2CAgent",
     "TDACAgent",

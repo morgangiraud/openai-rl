@@ -8,6 +8,9 @@ from agents.rnn_cell import LSTMCell
 # with my_graph.as_default():
 #     my_capacity()
 
+def swish(x):
+  return x * tf.sigmoid(x)
+  
 def eps_greedy(inputs_t, q_preds_t, nb_actions, N0, min_eps, nb_state=None):
     reusing_scope = tf.get_variable_scope().reuse
 
@@ -48,9 +51,9 @@ def tabular_eps_greedy(inputs_t, q_preds_t, nb_states, nb_actions, N0, min_eps):
         , min_eps
         , name="eps"
     )
-    
+
     nb_samples = tf.shape(q_preds_t)[0]
-    max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32) 
+    max_actions = tf.cast(tf.argmax(q_preds_t, 1), tf.int32)
     probs_t = tf.sparse_to_dense(
         sparse_indices=tf.stack([tf.range(nb_samples), max_actions], 1)
         , output_shape=[nb_samples, nb_actions]
@@ -146,7 +149,7 @@ def get_expected_rewards(episode_rewards, discount=.99):
 def tf_get_n_step_expected_rewards(episode_rewards_t, estimates_t, discount, n_step):
     ep_r_shape_0 = tf.shape(episode_rewards_t)[0]
     i = tf.matmul(
-        tf.expand_dims(tf.cast(tf.range(ep_r_shape_0), dtype=tf.float32), 1), 
+        tf.expand_dims(tf.cast(tf.range(ep_r_shape_0), dtype=tf.float32), 1),
         tf.ones((1, ep_r_shape_0))
     )
     j = tf.transpose(i)
@@ -177,7 +180,7 @@ def get_n_step_expected_rewards_mat(episode_rewards, estimates, discount=.99, n_
     return np.dot(episode_rewards, rewards_coef) + discount**(n_step) * np.dot(estimates, permut)
 
 def get_lambda_expected_rewards(episode_rewards, estimates, discount=.99, lambda_value=.9):
-    if lambda_value == 1.: # In this case this leads to MC 
+    if lambda_value == 1.: # In this case this leads to MC
         return get_expected_rewards(episode_rewards, discount)
 
     expected_reward = np.array([0.] * len(episode_rewards))
@@ -304,7 +307,7 @@ def build_batches(dtKeys, sequence_history, batch_size):
     for i in range(0, len(sequence_history), batch_size):
         history_chunk = sequence_history[i:i + batch_size]
         max_seq_len = len(max(history_chunk, key=lambda x: len(x)))
-        
+
         batch = { key: [] for key in dtKeys }
         batch['mask'] = []
         for history in history_chunk:
@@ -318,21 +321,21 @@ def build_batches(dtKeys, sequence_history, batch_size):
 
     return batches
 
-def policy(network_params, inputs):
+def policy(network_params, inputs, summary_collections=None):
     reusing_scope = tf.get_variable_scope().reuse
-    
+
     W1 = tf.get_variable('W1'
         , shape=[ network_params['nb_inputs'], network_params['nb_units'] ]
         , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
     )
     if reusing_scope is False:
-        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W1', W1, collections=summary_collections)
     b1 = tf.get_variable('b1'
         , shape=[ network_params['nb_units'] ]
         , initializer=tf.zeros_initializer()
     )
     if reusing_scope is False:
-        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b1', b1, collections=summary_collections)
     a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
 
     W2 = tf.get_variable('W2'
@@ -340,13 +343,13 @@ def policy(network_params, inputs):
         , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
     )
     if reusing_scope is False:
-        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('W2', W2, collections=summary_collections)
     b2 = tf.get_variable('b2'
         , shape=[ network_params['nb_units'] ]
         , initializer=tf.zeros_initializer()
     )
     if reusing_scope is False:
-        tf.summary.histogram('b2', b2)
+        tf.summary.histogram('b2', b2, collections=summary_collections)
     a2 = tf.nn.relu(tf.matmul(a1, W2) + b2)
 
     W3 = tf.get_variable('W3'
@@ -354,13 +357,13 @@ def policy(network_params, inputs):
         , initializer=tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
     )
     if reusing_scope is False:
-        tf.summary.histogram('W3', W3)
+        tf.summary.histogram('W3', W3, collections=summary_collections)
     b3 = tf.get_variable('b3'
         , shape=[ network_params['nb_outputs'] ]
         , initializer=tf.zeros_initializer()
     )
     if reusing_scope is False:
-        tf.summary.histogram('b3', b3)
+        tf.summary.histogram('b3', b3, collections=summary_collections)
     logits = tf.matmul(a2, W3) + b3
     probs_t = tf.nn.softmax(logits)
 
@@ -369,24 +372,24 @@ def policy(network_params, inputs):
     return (probs_t, actions_t)
 
 
-def value_f(network_params, inputs):
+def value_f(network_params, inputs, summary_collections=None):
     reusing_scope = tf.get_variable_scope().reuse
 
     w_init = tf.random_normal_initializer(mean=network_params['initial_mean'], stddev=network_params['initial_stddev'])
-    b_init = tf.zeros_initializer()  
+    b_init = tf.zeros_initializer()
 
     W1 = tf.get_variable('W1'
         , shape=[ network_params['nb_inputs'], network_params['nb_units'] ]
         , initializer=w_init
     )
     if reusing_scope is False:
-        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W1', W1, collections=summary_collections)
     b1 = tf.get_variable('b1'
         , shape=[ network_params['nb_units'] ]
         , initializer=b_init
     )
     if reusing_scope is False:
-        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b1', b1, collections=summary_collections)
     a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
 
     W2 = tf.get_variable('W2'
@@ -394,13 +397,13 @@ def value_f(network_params, inputs):
         , initializer=w_init
     )
     if reusing_scope is False:
-        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('W2', W2, collections=summary_collections)
     b2 = tf.get_variable('b2'
         , shape=[ network_params['nb_units'] ]
         , initializer=b_init
     )
     if reusing_scope is False:
-        tf.summary.histogram('b2', b2)
+        tf.summary.histogram('b2', b2, collections=summary_collections)
     a2 = tf.nn.relu(tf.matmul(a1, W2) + b2)
 
     W3 = tf.get_variable('W3'
@@ -408,18 +411,18 @@ def value_f(network_params, inputs):
         , initializer=w_init
     )
     if reusing_scope is False:
-        tf.summary.histogram('W3', W3)
+        tf.summary.histogram('W3', W3, collections=summary_collections)
     b3 = tf.get_variable('b3'
         , shape=[ network_params['nb_outputs'] ]
         , initializer=b_init
     )
     if reusing_scope is False:
-        tf.summary.histogram('b3', b3)
+        tf.summary.histogram('b3', b3, collections=summary_collections)
     values = tf.matmul(a2, W3) + b3
 
     return values
 
-def predictive_model(network_params, m_inputs, dynamic_batch_size, m_initial_state=None):
+def predictive_model(network_params, m_inputs, dynamic_batch_size, m_initial_state=None, summary_collections=None):
     reusing_scope = tf.get_variable_scope().reuse
 
     m_cell = LSTMCell(
@@ -448,36 +451,43 @@ def predictive_model(network_params, m_inputs, dynamic_batch_size, m_initial_sta
             , stddev=network_params['initial_stddev']
         )
     )
+    if reusing_scope is False:
+        tf.summary.histogram('WM_proj', WM_proj, collections=summary_collections)
     m_h_states_mat = tf.reshape(m_h_states, [-1, network_params['nb_units']])
-    state_reward_preds_mat = tf.matmul(m_h_states_mat, WM_proj) 
+    state_reward_preds_mat = tf.matmul(m_h_states_mat, WM_proj)
     state_reward_preds = tf.reshape(state_reward_preds_mat, [dynamic_batch_size, -1, network_params['env_state_size'] + 1], name="actions_t")
 
     return state_reward_preds, m_final_state, m_initial_state
 
-# This is weird, it seems to trouble the learning
-def projection(proj_params, inputs):
+def projection(proj_params, inputs, summary_collections=None):
     reusing_scope = tf.get_variable_scope().reuse
 
-    input_shape = tf.shape(inputs)
-    dynamic_batch_size, dynamic_num_steps = input_shape[0], input_shape[1]
+    w_init = tf.truncated_normal_initializer(mean=proj_params['initial_mean'], stddev=proj_params['initial_stddev'])
+    b_init = tf.zeros_initializer()
 
-    WC_proj = tf.get_variable(
-        "WC_proj"
-        , shape=[proj_params['nb_units'], proj_params['nb_actions']]
-        , dtype=tf.float32
-        , initializer=tf.truncated_normal_initializer(
-            mean=proj_params['initial_mean']
-            , stddev=proj_params['initial_stddev']
-        )
+    W1 = tf.get_variable('W1'
+        , shape=[ proj_params['nb_units'], proj_params['nb_units'] ]
+        , initializer=w_init
     )
-    bC_proj = tf.get_variable("bC_proj", shape=[proj_params['nb_actions']], dtype=tf.float32)
-    inputs_mat = tf.reshape(inputs, [-1, proj_params['nb_units']])
-    logits = tf.matmul(inputs_mat, WC_proj)
+    if reusing_scope is False:
+        tf.summary.histogram('W1', W1, collections=summary_collections)
+    b1 = tf.get_variable('b1'
+        , shape=[ proj_params['nb_units'] ]
+        , initializer=b_init
+    )
+    if reusing_scope is False:
+        tf.summary.histogram('b1', b1, collections=summary_collections)
+    a1 = tf.nn.relu(tf.matmul(inputs, W1) + b1)
 
-    preds_mat = tf.nn.softmax(logits, 1)
-    preds_t = tf.reshape(preds_mat, [dynamic_batch_size, -1, proj_params['nb_actions']], name="preds_t")
+    W2 = tf.get_variable('W2'
+        , shape=[ proj_params['nb_units'], proj_params['nb_actions'] ]
+        , initializer=w_init
+    )
+    if reusing_scope is False:
+        tf.summary.histogram('W2', W2, collections=summary_collections)
+    logits = tf.matmul(a1, W2)
 
-    actions_mat = tf.cast(tf.multinomial(logits, 1), tf.int32)
-    actions_t = tf.reshape(actions_mat, [dynamic_batch_size, -1, 1], name="actions_t")
+    preds_t = tf.nn.softmax(logits, 1)
+    actions_t = tf.cast(tf.multinomial(logits, 1), tf.int32)
 
     return preds_t, actions_t

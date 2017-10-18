@@ -26,7 +26,7 @@ def search(config):
         for i in range(nb_config): 
             params = get_params(config["fixed_params"])
             config.update(params)
-            config['random_seed'] = np.random.randint(1, 4, 1)[0]
+            config['random_seed'] = 1
 
             futures.append(executor.submit(test_params, i, copy.deepcopy(config), copy.deepcopy(params)))
         concurrent.futures.wait(futures)
@@ -56,6 +56,7 @@ def test_params(counter, config, params):
         # We train the agent
         agent.train(save_every=-1)
         stats = get_stats(config['result_dir'], ["score"])
+        print(stats)
         mean_score = np.mean(stats['score'])
         stddev_score = np.sqrt(np.var(stats['score']))
         result = {

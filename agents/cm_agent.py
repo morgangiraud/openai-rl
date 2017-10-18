@@ -50,14 +50,14 @@ class CMAgent(BasicAgent):
             'lr': 3e-3
             , 'm_lr': 3e-2
             , 'discount': 0.999
-            , 'nb_units': 15
-            , 'nb_m_units': 23
+            , 'nb_units': 10
+            , 'nb_m_units': 50
             , 'initial_mean': 0.
             , 'initial_stddev': 0.16604040438411888
             , 'initial_m_stddev': 0.28261298970489424
             , 'nb_sleep_iter': 32
             , 'nb_wake_iter': 8
-            # , 'random_seed': 1
+            , 'random_seed': 1
         }
         
     @staticmethod
@@ -110,7 +110,9 @@ class CMAgent(BasicAgent):
 
             m_scope = tf.VariableScope(reuse=False, name="m")
             with tf.variable_scope(m_scope):
-                self.state_reward_preds, self.m_final_state, self.m_initial_state = capacities.predictive_model(self.m_params, m_inputs, dynamic_batch_size)
+                self.state_reward_preds, self.m_final_state, self.m_initial_state = capacities.predictive_model(
+                    self.m_params, m_inputs, dynamic_batch_size, None, summary_collections=[self.M_SUMMARIES]
+                )
 
             fixed_m_scope = tf.VariableScope(reuse=False, name='FixedM')
             with tf.variable_scope(fixed_m_scope):
@@ -128,13 +130,14 @@ class CMAgent(BasicAgent):
 
                 m_adam = tf.train.AdamOptimizer(self.m_params['lr'])
                 self.m_global_step = tf.Variable(0, trainable=False, name="m_global_step")
-                tf.summary.scalar('m_global_step', self.m_global_step, collections=[self.C_SUMMARIES])
+                tf.summary.scalar('m_global_step', self.m_global_step, collections=[self.M_SUMMARIES])
                 self.m_train_op = m_adam.minimize(self.m_loss, global_step=self.m_global_step)
             
             self.all_m_summary_t = tf.summary.merge_all(key=self.M_SUMMARIES)
 
             # Graph of the controller
             c_scope = tf.VariableScope(reuse=False, name="c")
+            c_summary_collection = [self.C_SUMMARIES]
             with tf.variable_scope(c_scope):
                 # c_cell = LSTMCell(
                 #     num_units=self.c_params['nb_units']
@@ -193,17 +196,17 @@ class CMAgent(BasicAgent):
                     log_probs = tf.expand_dims(tf.log(tf.gather_nd(self.probs_t, stacked_actions)), 2)
                     masked_log_probs = log_probs * self.mask_plh
                     self.c_loss = tf.reduce_mean( - tf.reduce_sum(masked_log_probs * (self.c_rewards_plh - baseline), 1))
-                    tf.summary.scalar('c_loss', self.c_loss, collections=[self.C_SUMMARIES])
+                    tf.summary.scalar('c_loss', self.c_loss, collections=c_summary_collection)
 
                 c_adam = tf.train.AdamOptimizer(self.c_params['lr'])
                 self.c_global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES], dtype=tf.int32)
-                tf.summary.scalar('c_global_step', self.c_global_step, collections=[self.C_SUMMARIES])
+                tf.summary.scalar('c_global_step', self.c_global_step, collections=c_summary_collection)
                 self.c_train_op = c_adam.minimize(self.c_loss, global_step=self.c_global_step)
 
             self.all_c_summary_t = tf.summary.merge_all(key=self.C_SUMMARIES)
 
             self.score_plh = tf.placeholder(tf.float32, shape=[])
-            self.score_sum_t = tf.summary.scalar('av_score', self.score_plh)
+            self.score_sum_t = tf.summary.scalar('score', self.score_plh)
 
             self.episode_id, self.inc_ep_id_op = capacities.counter("episode_id")
             self.episode_id_sum = tf.summary.scalar('episode_id', self.episode_id)
@@ -265,9 +268,13 @@ class CMAgent(BasicAgent):
 
                 act, state, cm_prev_state = self.act(obs, cm_prev_state)
                 next_obs, reward, done, info = env.step(act)
-                next_state = np.concatenate( (next_obs, [float(done)]) )
 
-                memory = np.array([(state, act, reward, next_state)], dtype=self.memoryDt)
+                memory = np.array([(
+                    state, 
+                    act, 
+                    reward, 
+                     np.concatenate( (next_obs, [float(done)]) )
+                )], dtype=self.memoryDt)
                 episode_history = np.append(episode_history, memory)
 
                 score += reward

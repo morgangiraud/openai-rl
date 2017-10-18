@@ -148,15 +148,14 @@ class LSTMCell(tf.nn.rnn_cell.RNNCell):
                  tf.concat([c, m], 1))
     return outputs, new_state
  
-
-
 class CMCell(tf.nn.rnn_cell.RNNCell):
 
   def __init__(self, num_units, m_units,
                fixed_model_scope, model_func,
                projection_func, num_proj, cell_clip=None,
                initializer=None, forget_bias=1.0, state_is_tuple=True,
-               activation=None, reuse=None):
+               activation=None, reuse=None,
+               use_query_and_answer_topology=True):
 
     super(CMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
@@ -180,6 +179,8 @@ class CMCell(tf.nn.rnn_cell.RNNCell):
     self._model_func = model_func
     self._fixed_model_scope = fixed_model_scope
     self._projection_func = projection_func
+
+    self._use_query_and_answer_topology = use_query_and_answer_topology
     
 
   @property
@@ -234,8 +235,7 @@ class CMCell(tf.nn.rnn_cell.RNNCell):
     if self._state_is_tuple:
       (c_prev, m_prev) = state
     else:
-      c_prev = tf.slice(state, [0, 0], [-1, self._num_units])
-      m_prev = tf.slice(state, [0, self._num_units], [-1, self._num_units])
+      c_rev, m_prev = tf.split(value=state, num_or_size_splits=2, axis=1)
 
     dtype = inputs.dtype
     input_size = inputs.get_shape().with_rank(2)[1]
@@ -257,13 +257,68 @@ class CMCell(tf.nn.rnn_cell.RNNCell):
         # pylint: enable=invalid-unary-operand-type
       
       h = sigmoid(o) * self._activation(c)
+      
 
     outputs = tf.concat([c, h], 1)
     new_state = (tf.nn.rnn_cell.LSTMStateTuple(c, h) if self._state_is_tuple else
                  tf.concat([c, h], 1))
     return outputs, new_state
  
-  def call(self, input_state, cm_state):
+  def _call_controller_cell_mul(self, inputs, state):
+    """Long short-term memory cell (LSTM).
+
+    Args:
+      inputs: `2-D` tensor with shape `[batch_size x input_size]`.
+      state: An `LSTMStateTuple` of state tensors, each shaped
+        `[batch_size x self.state_size]`, if `state_is_tuple` has been set to
+        `True`.  Otherwise, a `Tensor` shaped
+        `[batch_size x 2 * self.state_size]`.
+
+    Returns:
+      A pair containing the new hidden state, and the new state (either a
+        `LSTMStateTuple` or a concatenated state, depending on
+        `state_is_tuple`).
+    """
+    sigmoid = tf.sigmoid
+    # Parameters of gates are concatenated into one multiply for efficiency.
+    if self._state_is_tuple:
+      c_prev, h_prev = state
+    else:
+      c_prev, h_prev = tf.split(value=state, num_or_size_splits=2, axis=1)
+
+    dtype = inputs.dtype
+    input_size = inputs.get_shape().with_rank(2)[1]
+    if input_size.value is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+
+    scope = tf.get_variable_scope()
+    with tf.variable_scope(scope, initializer=self._initializer) as outer_scope:
+      W_hi = tf.get_variable('W_hi', [self._num_units, self._num_units])
+      W_xi = tf.get_variable('W_xi', [inputs.shape[1].value, self._num_units])
+      W_hj = tf.get_variable('W_hj', [self._num_units, self._num_units])
+      W_xj = tf.get_variable('W_xj', [inputs.shape[1].value, self._num_units])
+      W_hf = tf.get_variable('W_hf', [self._num_units, self._num_units])
+      W_xf = tf.get_variable('W_xf', [inputs.shape[1].value, self._num_units])
+      W_ho = tf.get_variable('W_ho', [self._num_units, self._num_units])
+      W_xo = tf.get_variable('W_xo', [inputs.shape[1].value, self._num_units])
+        
+      # i = input_gate, j = new_input, f = forget_gate, o = output_gate
+      i = tf.matmul(h_prev, W_hi) * tf.matmul(inputs, W_xi)
+      j = tf.matmul(h_prev, W_hj) * tf.matmul(inputs, W_xj)
+      f = tf.matmul(h_prev, W_hf) * tf.matmul(inputs, W_xf)
+      o = tf.matmul(h_prev, W_ho) * tf.matmul(inputs, W_xo)
+
+      c = (c_prev * sigmoid(f + self._forget_bias) + sigmoid(i) *
+           self._activation(j))
+      h = self._activation(c) * sigmoid(o)
+
+
+    outputs = tf.concat([c, h], 1)
+    new_state = (tf.nn.rnn_cell.LSTMStateTuple(c, h) if self._state_is_tuple else
+                 tf.concat([c, h], 1))
+    return outputs, new_state
+
+  def call(self, inputs, cm_state):
     if self._state_is_tuple:
       (c_state, m_state) = cm_state
     else:
@@ -275,49 +330,73 @@ class CMCell(tf.nn.rnn_cell.RNNCell):
     with tf.variable_scope(c_scope):
       # outputs: [controller memory cell, controller state]
       # new_c_state: LSTMTuple([controller memory cell, controller state])
-      c_tmp_outputs, c_tmp_state = self._call_controller_cell(input_state, c_state)
+      # c_inputs = tf.concat([inputs, tf.ones(tf.shape(inputs)) * -1], 1)
+      c_inputs = inputs
+      c_tmp_outputs, c_tmp_state = self._call_controller_cell(c_inputs, c_state)
     c_tmp_c, c_tmp_h = tf.split(value=c_tmp_outputs, num_or_size_splits=[self._num_units, self._num_units], axis=1)
 
-    c_projection_scope = tf.VariableScope(reuse=False, name="c")
-    with tf.variable_scope(c_projection_scope):
-      tmp_preds_t, _ = self._projection_func(tf.expand_dims(c_tmp_h, 1))
 
-    # We use the action distribution, previous model state and input state
-    # To compute the prediction for the next state
+    c_projection_scope = tf.VariableScope(reuse=False, name="c_projection")
+    with tf.variable_scope(c_projection_scope):
+      action_distribution, _ = self._projection_func(c_tmp_h)
+
+    if self._use_query_and_answer_topology:
+      query_scope = tf.VariableScope(reuse=False, name="query")
+      with tf.variable_scope(query_scope):
+        m_c_state, m_h_state = m_state
+
+        a1 = tf.layers.dense(
+          tf.concat([m_c_state, c_tmp_h], 1), self._num_units, tf.nn.relu)
+        a2 = tf.layers.dense(a1, self._num_units, tf.nn.relu)
+        edited_m_c_state = tf.layers.dense(a2, m_c_state.get_shape()[1], tf.tanh)
+
+      edited_m_state = tf.nn.rnn_cell.LSTMStateTuple(edited_m_c_state, m_h_state)
+
     with tf.variable_scope(self._fixed_model_scope, reuse=True):
-      model_inputs = tf.concat([tf.expand_dims(input_state, 1), tmp_preds_t], 2)
-      # It's invisible but we have a placeholder for the model initial state
-      state_reward_preds_seq, _, _ = self._model_func(model_inputs, m_state)
+      model_inputs = tf.concat([
+        tf.expand_dims(inputs, 1), 
+        tf.expand_dims(action_distribution, 1)]
+      , 2)
+      if self._use_query_and_answer_topology:
+        state_reward_preds_seq, m_tmp_state, _ = self._model_func(model_inputs, edited_m_state)
+      else:
+        state_reward_preds_seq, m_tmp_state, _ = self._model_func(model_inputs, m_state)
       state_reward_preds = tf.squeeze(state_reward_preds_seq, 1)
     state_preds = state_reward_preds[:, :-1]
+
+    if self._use_query_and_answer_topology:
+      answer_scope = tf.VariableScope(reuse=False, name="answer")
+      with tf.variable_scope(answer_scope):
+        m_tmp_c_state, m_tmp_h_state = m_tmp_state
+
+        a1 = tf.layers.dense(tf.concat([m_tmp_h_state, state_reward_preds], 1), self._num_units, tf.nn.relu)
+        a2 = tf.layers.dense(a1, self._num_units, tf.nn.relu)
+        answer = tf.layers.dense(a2, inputs.get_shape()[1])
 
     # We use the next state, to finally predict the new distribution over action
     # And the selected action
     with tf.variable_scope(c_scope, reuse=True):
-      outputs, c_final_state = self._call_controller_cell(state_preds, c_tmp_state)
+      if not self._use_query_and_answer_topology:
+        # answer = tf.concat([state_preds, tf.ones(tf.shape(state_preds))], 1)
+        answer = state_preds
+      outputs, c_final_state = self._call_controller_cell(answer, c_tmp_state)
     c, h = tf.split(value=outputs, num_or_size_splits=[self._num_units, self._num_units], axis=1)
 
     with tf.variable_scope(c_projection_scope, reuse=True):
-      preds_t, actions_t = self._projection_func(tf.expand_dims(h, 1))
+      preds_t, actions_t = self._projection_func(h)
 
     # Finally we use the chosen action, the input state, and the current model state
     # To compute the next model state
     with tf.variable_scope(self._fixed_model_scope, reuse=True):
-      action_input = tf.one_hot(
-        indices=tf.squeeze(actions_t, 2), depth=self._num_proj
-      )
-      model_inputs = tf.concat([tf.expand_dims(input_state, 1), action_input], 2)
+      action_input = tf.one_hot(indices=actions_t, depth=self._num_proj)
+      model_inputs = tf.concat([tf.expand_dims(inputs, 1), action_input], 2)
+
       _, m_final_state, _ = self._model_func(model_inputs, m_state)
       
-
-    final_outputs = tf.concat(
-      [tf.squeeze(preds_t, 1), tf.squeeze(tf.cast(actions_t, tf.float32), 1)]
-      , 1
-      )
+    final_outputs = tf.concat([preds_t, tf.cast(actions_t, tf.float32)], 1)
 
     new_cm_state = (tf.nn.rnn_cell.LSTMStateTuple(c_final_state, m_final_state) if self._state_is_tuple else
           tf.concat([c_final_state, m_final_state], 1))
 
     return final_outputs, new_cm_state
  
-

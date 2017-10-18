@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 
 def get_stats(result_dir, tag_names):
+
     eventFile = [f for f in os.listdir(result_dir) if os.path.isfile(os.path.join(result_dir, f)) and 'events' in f][0]
     stats = { key: [] for key in tag_names }
     try:

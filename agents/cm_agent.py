@@ -234,7 +234,7 @@ class CMAgent(BasicAgent):
 
     def train(self, render=False, save_every=49):
         self.sess.run(self.update_m_fixed_vars_op)
-        for i in range(0, self.max_iter, self.nb_wake_iter):
+        for i in range(0, self.max_iter // self.nb_wake_iter + 1):
             # Wake phase
             # Collect a batched trajectories
             sequence_history = self.collect_samples(self.env, render, self.nb_wake_iter)
@@ -246,17 +246,20 @@ class CMAgent(BasicAgent):
             # sleep phase
             # If you train the model before the controller
             # The controller is not learning on-policy anymore
-            self.train_model(sequence_history)
+            if i % self.nb_sleep_iter == 0:
+                self.train_model(sequence_history)
 
-            if save_every > 0 and i % save_every > (i + self.nb_wake_iter) % save_every:
+            if save_every > 0 and i % (save_every // self.nb_wake_iter) == 0:
                 self.save()
 
     def collect_samples(self, env, render, nb_sequence=1):
         # print('Collecting samples')
         sequence_history = []
         av_score = []
+        print("!!! We are masking the loss for the CartPole environment !!!")
+        mask_obs = lambda obs: [obs[i] if i % 2 == 0 else 0 for i in range(len(obs))]
         for i in range(nb_sequence):
-            obs = env.reset()
+            obs = mask_obs(env.reset())
             score = 0
             cm_prev_state = None
             episode_history = np.array([], dtype=self.memoryDt)
@@ -268,6 +271,7 @@ class CMAgent(BasicAgent):
 
                 act, state, cm_prev_state = self.act(obs, cm_prev_state)
                 next_obs, reward, done, info = env.step(act)
+                next_obs = mask_obs(next_obs)
 
                 memory = np.array([(
                     state, 
@@ -292,7 +296,11 @@ class CMAgent(BasicAgent):
         })
         self.sw.add_summary(summary, time)
 
-        self.episode_histories += sequence_history
+        # We don't keep track of more than the last 200 episodes
+        if len(self.episode_histories) >= 200:
+            self.episode_histories = self.episode_histories[nb_sequence:] + sequence_history
+        else:
+            self.episode_histories += sequence_history
 
         return sequence_history
 
@@ -314,18 +322,20 @@ class CMAgent(BasicAgent):
 
     def train_model(self, sequence_history):
         # print('Training model')
-        batches = build_batches(self.dtKeys, self.episode_histories, self.nb_sleep_iter)
-        seq_batches = build_batches(self.dtKeys, sequence_history, self.nb_sleep_iter)
 
-        for batch in seq_batches + batches[:2]:
-            _, m_sum, time, _ = self.sess.run([self.m_train_op, self.all_m_summary_t, self.time, self.inc_time_op], feed_dict={
-                self.state_input_plh: batch['states']
-                , self.action_input_plh: batch['actions']
-                , self.m_rewards: batch['rewards']
-                , self.m_next_states: batch['next_states']
-                , self.mask_plh: batch['mask'] 
-            })
+        for i in range(self.nb_sleep_iter):
+            batches = build_batches(self.dtKeys, self.episode_histories, self.nb_wake_iter)
+            seq_batches = build_batches(self.dtKeys, sequence_history, self.nb_wake_iter)
 
-            self.sw.add_summary(m_sum, time)
+            for batch in seq_batches + batches[:3]:
+                _, m_sum, time, _ = self.sess.run([self.m_train_op, self.all_m_summary_t, self.time, self.inc_time_op], feed_dict={
+                    self.state_input_plh: batch['states']
+                    , self.action_input_plh: batch['actions']
+                    , self.m_rewards: batch['rewards']
+                    , self.m_next_states: batch['next_states']
+                    , self.mask_plh: batch['mask'] 
+                })
+
+                self.sw.add_summary(m_sum, time)
 
         self.sess.run(self.update_m_fixed_vars_op)

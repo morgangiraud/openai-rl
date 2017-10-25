@@ -348,28 +348,30 @@ class CMCell(tf.nn.rnn_cell.RNNCell):
         a1 = tf.layers.dense(
           tf.concat([m_c_state, c_tmp_h], 1), self._num_units, tf.nn.relu)
         a2 = tf.layers.dense(a1, self._num_units, tf.nn.relu)
-        edited_m_c_state = tf.layers.dense(a2, m_c_state.get_shape()[1], tf.tanh)
+        q = tf.layers.dense(a2, m_c_state.get_shape()[1] + inputs.get_shape()[1])
+        edited_m_c_state, c_s = tf.split(value=q, num_or_size_splits=[m_c_state.get_shape()[1].value, inputs.get_shape()[1].value], axis=1)
+        edited_m_c_state = tf.tanh(edited_m_c_state)
 
       edited_m_state = tf.nn.rnn_cell.LSTMStateTuple(edited_m_c_state, m_h_state)
 
     with tf.variable_scope(self._fixed_model_scope, reuse=True):
       model_inputs = tf.concat([
-        tf.expand_dims(inputs, 1), 
+        tf.expand_dims(c_s, 1), 
         tf.expand_dims(action_distribution, 1)]
       , 2)
       if self._use_query_and_answer_topology:
-        state_reward_preds_seq, m_tmp_state, _ = self._model_func(model_inputs, edited_m_state)
+        state_reward_preds_seq, m_final_state, _ = self._model_func(model_inputs, edited_m_state)
       else:
-        state_reward_preds_seq, m_tmp_state, _ = self._model_func(model_inputs, m_state)
+        state_reward_preds_seq, m_final_state, _ = self._model_func(model_inputs, m_state)
       state_reward_preds = tf.squeeze(state_reward_preds_seq, 1)
     state_preds = state_reward_preds[:, :-1]
 
     if self._use_query_and_answer_topology:
       answer_scope = tf.VariableScope(reuse=False, name="answer")
       with tf.variable_scope(answer_scope):
-        m_tmp_c_state, m_tmp_h_state = m_tmp_state
+        m_final_c_state, m_final_h_state = m_final_state
 
-        a1 = tf.layers.dense(tf.concat([m_tmp_h_state, state_reward_preds], 1), self._num_units, tf.nn.relu)
+        a1 = tf.layers.dense(tf.concat([m_final_h_state, state_reward_preds], 1), self._num_units, tf.nn.relu)
         a2 = tf.layers.dense(a1, self._num_units, tf.nn.relu)
         answer = tf.layers.dense(a2, inputs.get_shape()[1])
 
@@ -385,13 +387,12 @@ class CMCell(tf.nn.rnn_cell.RNNCell):
     with tf.variable_scope(c_projection_scope, reuse=True):
       preds_t, actions_t = self._projection_func(h)
 
-    # Finally we use the chosen action, the input state, and the current model state
-    # To compute the next model state
-    with tf.variable_scope(self._fixed_model_scope, reuse=True):
-      action_input = tf.one_hot(indices=actions_t, depth=self._num_proj)
-      model_inputs = tf.concat([tf.expand_dims(inputs, 1), action_input], 2)
 
-      _, m_final_state, _ = self._model_func(model_inputs, m_state)
+    # with tf.variable_scope(self._fixed_model_scope, reuse=True):
+    #   action_input = tf.one_hot(indices=actions_t, depth=self._num_proj)
+    #   model_inputs = tf.concat([tf.expand_dims(inputs, 1), action_input], 2)
+
+    #   _, m_final_state, _ = self._model_func(model_inputs, m_state)
       
     final_outputs = tf.concat([preds_t, tf.cast(actions_t, tf.float32)], 1)
 

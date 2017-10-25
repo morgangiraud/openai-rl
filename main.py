@@ -36,6 +36,7 @@ flags.DEFINE_integer('nb_units', 20, 'Number of hidden units in Deep learning ag
 flags.DEFINE_float('critic_lr', 1e-3, 'For Learning rate for the critic part of AC agents')
 flags.DEFINE_float('nb_critic_iter', 16, 'Number of iteration to fit the critic')
 flags.DEFINE_integer('n_step', 4, 'Number of step used in TD(n) algorithm')
+flags.DEFINE_float('reg_coef', 1e-2, 'regularization coefficient')
 # CM agents
 flags.DEFINE_integer('nb_sleep_iter', 100, 'Used in CM models: number of step used to train the actor in the environment')
 flags.DEFINE_integer('nb_wake_iter', 50, 'Used in CM models: number of step used to train the predictive model of the environment')

@@ -160,7 +160,8 @@ class DQNAgent(DeepTDAgent):
     def set_agent_props(self):
         super(DQNAgent, self).set_agent_props()
         
-        self.er_every = self.config['er_every']
+        self.reg_coef = self.config['reg_coef']
+        self.update_every = self.config['update_every']
         self.er_batch_size = self.config['er_batch_size']
         self.er_rm_size = self.config['er_rm_size']
 
@@ -175,13 +176,14 @@ class DQNAgent(DeepTDAgent):
     def get_best_config(self, env_name=""):
         return {
             'lr': 9e-4
+            , 'reg_coef': 1e-1
             , 'nb_units': 22
             , 'discount': 0.999
             , 'N0': 2200
             , 'min_eps': 0.001
             , 'initial_mean': 0.
             , 'initial_stddev': 0.2776861144026909
-            , 'er_every': 201
+            , 'update_every': 201
             , 'er_batch_size': 208
             , 'er_rm_size': 40000
         }
@@ -197,7 +199,7 @@ class DQNAgent(DeepTDAgent):
         get_initial_stddev = lambda: 1e-4 + (5e-1 - 1e-4) * np.random.random(1)[0]
         get_er_batch_size = lambda: np.random.randint(16, 1024)
         get_er_rm_size = lambda: np.random.randint(10000, 50000)
-        get_er_every = lambda: np.random.randint(1, 1000)
+        get_update_every = lambda: np.random.randint(1, 1000)
 
         random_config = {
             'lr': get_lr()
@@ -209,7 +211,7 @@ class DQNAgent(DeepTDAgent):
             , 'initial_stddev': get_initial_stddev()
             , 'er_batch_size': get_er_batch_size()
             , 'er_rm_size': get_er_rm_size()
-            , 'er_every': get_er_every()
+            , 'update_every': get_update_every()
         }
         random_config.update(fixed_params)
 
@@ -257,7 +259,8 @@ class DQNAgent(DeepTDAgent):
                 select_targets = tf.stack([tf.range(0, tf.shape(self.er_next_states)[0]), tf.cast(self.er_next_states[:, -1], tf.int32)], 1)
                 er_target_qs = tf.gather_nd(er_stacked_targets, select_targets)
 
-                self.er_loss = 1/2 * tf.reduce_sum(tf.square(er_target_qs - er_qs))
+                darc1_reg = tf.reduce_max(tf.reduce_mean(tf.abs(er_q_values), axis=0))
+                self.er_loss = 1/2 * (tf.reduce_mean(tf.square(er_target_qs - er_qs)) + self.reg_coef * darc1_reg)
                 er_adam = tf.train.AdamOptimizer(self.lr)
                 self.global_step = tf.Variable(0, trainable=False, name="global_step", collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
                 self.er_train_op = er_adam.minimize(self.er_loss, global_step=self.global_step)
@@ -311,7 +314,7 @@ class DQNAgent(DeepTDAgent):
                 self.er_rewards: memories['rewards'],
                 self.er_next_states: memories['next_states'],
             })
-            if timestep % self.er_every == 0:
+            if timestep % self.update_every == 0:
                 self.sess.run(self.update_fixed_vars_op)
 
             av_loss.append(loss)
@@ -353,7 +356,7 @@ class DQNTimeAwareAgent(DQNAgent):
             , 'min_eps': 0.001
             , 'initial_mean': 0.
             , 'initial_stddev': 0.2776861144026909
-            , 'er_every': 201
+            , 'update_every': 201
             , 'er_batch_size': 208
             , 'er_rm_size': 40000
         }
@@ -387,7 +390,7 @@ class DQNTimeAwareAgent(DQNAgent):
                 self.er_rewards: memories['rewards'],
                 self.er_next_states: memories['next_states'],
             })
-            if timestep % self.er_every == 0:
+            if timestep % self.update_every == 0:
                 self.sess.run(self.update_fixed_vars_op)
 
             av_loss.append(loss)
@@ -418,7 +421,7 @@ class DDQNAgent(DQNAgent):
             , 'min_eps': 0.001
             , 'initial_mean': 0.
             , 'initial_stddev': 0.39560728810993573
-            , 'er_every': 116
+            , 'update_every': 116
             , 'er_batch_size': 259
             , 'er_rm_size': 40000
         }

@@ -9,7 +9,7 @@ cycler==0.10.0
 Cython==0.27.1
 glfw==1.4.0
 gym==0.9.3
-html5lib==0.9999999
+html5lib==0.999999999
 idna==2.6
 imageio==2.2.0
 Keras==2.0.8
